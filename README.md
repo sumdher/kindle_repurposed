@@ -17,9 +17,9 @@ Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px
 
 ### Kindle
 - **Jailbroken Kindle Oasis 3 (10th gen)** — a stock Kindle cannot run arbitrary browser apps
-  - Follow the [MobileRead jailbreak guide](https://www.mobileread.com/forums/showthread.php?t=320564) for your firmware version. also, [this video](https://www.youtube.com/watch?v=l4ZliC82RtA)
+  - Follow the [MobileRead guide](https://www.mobileread.com/forums/showthread.php?t=320564) for your firmware version. Also, [this video](https://www.youtube.com/watch?v=l4ZliC82RtA)
 - **KUAL** (Kindle Unified Application Launcher) installed post-jailbreak 
-- **Shortcut Browser** launches a full-screen Chromium instance pointed at a URL [link](https://github.com/mitchellurgero/kindle-shortcut-browser)
+- **Shortcut Browser** launches a full-screen Chromium instance pointed at a URL. [Link](https://github.com/mitchellurgero/kindle-shortcut-browser)
 
 ## Setup
 
