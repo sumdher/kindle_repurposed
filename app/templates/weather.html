@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Weather — Milan{% endblock %}
+
+{% block head_extra %}
+<meta http-equiv="refresh" content="300">
+{% endblock %}
+
+{% block content %}
+<!-- Layout: left(520) + gap(20) + right(893) = 1433px content width.
+     If you change any number here, update RIGHT_W in app/main.py to match:
+       RIGHT_W = 1433 - left_panel_px - gap_px -->
+<div style="display:flex; gap:40px; height:1232px;">
+
+  <!-- ══ LEFT PANEL ════════════════════════════════════════════════════════ -->
+  <!--
+    Each .metric has flex:1 so all 8 rows share the remaining height equally
+    (~103px each). Text is centered vertically inside each row.
+    This fills the panel without gaps and keeps the layout pixel-exact.
+  -->
+  <div class="box" style="
+    flex: 0 0 520px;
+    height: 1232px;
+    padding: 14px 20px 14px 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  ">
+
+    <!-- City + date -->
+    <div style="border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:12px; flex-shrink:0;">
+      <div style="font-size:28px; font-weight:bold; line-height:1;">Milan, Italy</div>
+      <div style="font-size:17px; color:#555; margin-top:4px;">{{ today_date }}</div>
+    </div>
+
+    {% if current %}
+
+    <!-- Temperature — 140px fills the 380px usable width nicely for 2-digit numbers -->
+    <div style="font-size:140px; font-weight:bold; line-height:1; letter-spacing:-3px;
+                margin-bottom:6px; flex-shrink:0;">
+      {{ "%.0f"|format(current.temperature) }}<span style="font-size:72px; letter-spacing:-1px;">°C</span>
+    </div>
+
+    <!-- Condition icon + label -->
+    <div style="display:flex; align-items:center; gap:14px;
+                margin-bottom:10px; flex-shrink:0;">
+      {{ condition_icon | safe }}
+      <span style="font-size:26px; font-weight:bold; line-height:1.2;">{{ condition_label }}</span>
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid #bbb; margin-bottom:0; flex-shrink:0;"></div>
+
+    <!-- Metrics — each row is flex:1, so all 8 split the remaining height equally -->
+    <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Feels like</span>
+        <span class="metric-value">{{ "%.0f"|format(current.feels_like) }}°C</span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Humidity</span>
+        <span class="metric-value">{{ current.humidity }}%</span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Wind</span>
+        <span class="metric-value">{{ "%.0f"|format(current.wind_speed) }} km/h {{ wind_dir }}</span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">UV Index (now / max today)</span>
+        <span class="metric-value">
+          {{ "%.0f"|format(current.uv_index) }}{% if daily %} / {{ "%.0f"|format(daily.uv_max) }}{% endif %}
+        </span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Pressure</span>
+        <span class="metric-value">{{ "%.0f"|format(current.pressure) }} hPa</span>
+      </div>
+
+      {% if daily %}
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Today high / low</span>
+        <span class="metric-value">{{ "%.0f"|format(daily.temp_max) }}° / {{ "%.0f"|format(daily.temp_min) }}°C</span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Sunrise / Sunset</span>
+        <span class="metric-value">{{ daily.sunrise }} / {{ daily.sunset }}</span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center;">
+        <span class="metric-label">Rain today</span>
+        <span class="metric-value">{{ "%.1f"|format(daily.precip_sum) }} mm</span>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <!-- Footer -->
+    <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:8px;
+                font-size:14px; color:#777; flex-shrink:0;">
+      Updated {{ now }}
+      {% if stale %}<span class="stale-banner" style="margin-left:8px;">Stale</span>{% endif %}
+    </div>
+
+    {% else %}
+    <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+      <p style="font-size:22px; color:#777;">Weather unavailable</p>
+    </div>
+    {% endif %}
+
+  </div>
+  <!-- ══ end LEFT PANEL ═══════════════════════════════════════════════════ -->
+
+  <!-- ══ RIGHT PANEL ═══════════════════════════════════════════════════════ -->
+  <div style="flex:1; height:1232px; display:flex; flex-direction:column; overflow:hidden;">
+
+    <!-- Hourly section title (self-closing div — no content inside) -->
+    <div class="section-title">Today — Hourly Forecast</div>
+    <div style="height:325px; margin-bottom:14px; flex-shrink:0;">
+      {{ hourly_svg | safe }}
+    </div>
+
+    <div class="section-title">48-Hour History</div>
+    <!--
+      Graphs stacked vertically, each 993px wide (GRAPH_W) × 410px tall (GRAPH_H).
+      Full right-panel width gives readable x-axis tick spacing.
+      gap:10px → total 410+10+410=830px ≈ remaining height.
+    -->
+    <div style="display:flex; flex-direction:column; gap:10px; flex:1; min-height:0;">
+      <div style="flex:0 0 410px; overflow:hidden;">{{ pressure_svg | safe }}</div>
+      <div style="flex:0 0 410px; overflow:hidden;">{{ wind_svg | safe }}</div>
+    </div>
+
+  </div>
+  <!-- ══ end RIGHT PANEL ══════════════════════════════════════════════════ -->
+
+</div>
+{% endblock %}

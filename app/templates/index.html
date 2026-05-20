@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Landscape: 1433×1232 content area — two big nav buttons centred -->
+<div style="
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 1232px;
+  gap: 50px;
+">
+  <h1 style="font-size:44px; letter-spacing:0.04em;">Kindle Dashboard</h1>
+
+  <div style="display:flex; gap:60px;">
+    <a href="/weather" class="nav-btn" style="width:580px; height:220px; font-size:40px;">
+      &#9729; Weather
+    </a>
+    <a href="/docker" class="nav-btn" style="width:580px; height:220px; font-size:40px;">
+      &#9634; Docker
+    </a>
+  </div>
+
+  <p style="font-size:18px; color:#777;">Milan, Italy &nbsp;·&nbsp; {{ request.host }}</p>
+</div>
+{% endblock %}

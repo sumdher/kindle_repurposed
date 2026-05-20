@@ -1,0 +1,17 @@
+services:
+  kindle-dashboard:
+    build: .
+    container_name: kindle-dashboard
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount app source so file changes are picked up without rebuilding
+      - ./app:/srv/kindle/app
+    environment:
+      - TZ=Europe/Rome
+      # Override the LAN IP shown in the startup banner.
+      # _local_ip() detects the container bridge IP inside Docker, not the host LAN IP.
+      - ANNOUNCE_IP=192.168.1.x  # set to your machine's LAN IP
+      - PYTHONUNBUFFERED=1

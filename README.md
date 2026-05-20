@@ -1,0 +1,80 @@
+# Kindle Dashboard
+
+A FastAPI web application for a Kindle Oasis 3 (10th gen) e-ink display.
+Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px viewport exactly.
+
+## Screenshots
+
+### Weather 
+![weather](.media/weather_dashboard.jpeg)
+
+## Requirements
+
+- Python 3.11+
+- The server machine runs on your LAN (tested on `192.168.1.37`)
+- Docker daemon running locally (optional — /docker page degrades gracefully)
+
+## Setup
+
+```bash
+cd kindle_repurposed
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## Run
+
+```bash
+python -m app.main
+```
+
+Or with uvicorn directly:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+On startup you'll see:
+
+```
+  Open on Kindle:  http://192.168.1.37:8080/weather
+```
+
+## Endpoints
+
+| URL | Description | Refresh |
+|-----|-------------|---------|
+| `/` | Index with nav buttons | — |
+| `/weather` | Milan weather dashboard | 5 min |
+| `/docker` | Docker container status | 30 sec |
+
+## Kindle / Shortcut Browser setup
+
+In your KUAL Shortcut Browser config, set:
+
+```
+FULLSCREEN_SITE=http://192.168.1.37:8080/weather
+```
+
+The browser is launched with `--content-shell-host-window-cord=0,215` which offsets
+the viewport by 215 px to account for the Kindle UI bar — the app is designed for
+the resulting 1264×1465 px viewport.
+
+## Windows startup (optional)
+
+To start the server automatically when your PC boots, create a scheduled task or
+add a `.bat` file to `shell:startup`:
+
+```bat
+@echo off
+cd /d C:\path\to\kindle_repurposed
+.venv\Scripts\python.exe -m app.main
+```
+
+Or use NSSM to wrap uvicorn as a Windows service.
+
+## Data sources
+
+- **Weather**: [Open-Meteo](https://open-meteo.com/) — free, no API key needed
+- **Docker**: local Docker daemon via the Python `docker` SDK

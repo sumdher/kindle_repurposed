@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1264, initial-scale=1.0, user-scalable=no">
+  <title>{% block title %}Kindle Dashboard{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <!--
+    .page is 1680×1264px (landscape) rotated -90° into the 1264×1680 portrait
+    viewport. Power button to the right = content appears landscape.
+  -->
+  <div class="page">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

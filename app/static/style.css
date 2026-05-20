@@ -1,0 +1,113 @@
+/*
+ * Kindle Oasis 10th gen: 1264x1680px portrait, 300ppi (confirmed by ruler: 14cm x 10.8cm).
+ * CSS viewport = 1264x1680px. Kindle UI bar overlays the physical top in portrait
+ * (= landscape RIGHT). We leave 60px right padding as safe zone for the UI bar.
+ *
+ * .page is 1680x1264px (landscape), rotated into the 1264x1680 portrait viewport:
+ *   transform: translateY(1680px) rotate(-90deg)  with transform-origin: 0 0
+ *
+ * Content: 1680 - 16(left) - 60(right) = 1604px wide, 1264 - 32(top+bot) = 1232px tall
+ *   Left panel : 520px
+ *   Gap        :  40px
+ *   Right panel: 1044px
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 1264px;
+  height: 1680px;
+  overflow: hidden;
+  background: #fff;
+  color: #000;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1680px;
+  height: 1264px;
+  overflow: hidden;
+  padding: 16px 16px 16px 16px;
+  transform-origin: 0 0;
+  transform: translateY(1680px) rotate(-90deg);
+  background: #fff;
+}
+
+/* -- Typography ------------------------------------------------ */
+h1 { font-size: 34px; font-weight: bold; }
+h2 { font-size: 26px; font-weight: bold; }
+
+.dim  { color: #666; }
+.bold { font-weight: bold; }
+
+/* -- Borders --------------------------------------------------- */
+.box {
+  border: 1px solid #000;
+  border-radius: 3px;
+}
+
+/* -- Section title --------------------------------------------- */
+.section-title {
+  font-size: 17px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #555;
+  border-bottom: 1px solid #bbb;
+  padding-bottom: 3px;
+  margin-bottom: 5px;
+}
+
+/* -- Metric row (left panel) ----------------------------------- */
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.metric-label {
+  font-size: 19px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+}
+.metric-value {
+  font-size: 30px;
+  font-weight: bold;
+  line-height: 1.1;
+}
+
+/* -- Index nav buttons ----------------------------------------- */
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #000;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #000;
+  font-size: 38px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  width: 560px;
+  height: 200px;
+}
+
+/* -- Stale data warning ---------------------------------------- */
+.stale-banner {
+  font-size: 15px;
+  color: #777;
+  border: 1px solid #aaa;
+  border-radius: 3px;
+  padding: 3px 10px;
+  display: inline-block;
+}

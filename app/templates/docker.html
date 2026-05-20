@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Docker Containers{% endblock %}
+
+{# 30-second refresh — containers change state frequently #}
+{% block head_extra %}
+<meta http-equiv="refresh" content="30">
+{% endblock %}
+
+{% block content %}
+<!-- Landscape content area: 1433×1232px -->
+<div style="height:1232px; display:flex; flex-direction:column;">
+
+  <!-- Header -->
+  <div style="
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;
+    flex-shrink:0;
+  ">
+    <h1 style="font-size:34px;">Docker Containers</h1>
+    <span style="font-size:16px; color:#555;">{{ now }}</span>
+  </div>
+
+  {% if error %}
+  <div style="flex:1; display:flex; flex-direction:column;
+              align-items:center; justify-content:center; gap:16px;">
+    <p style="font-size:30px; font-weight:bold;">Docker not available</p>
+    <p style="font-size:18px; color:#777;">{{ error }}</p>
+  </div>
+
+  {% elif not containers %}
+  <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+    <p style="font-size:24px; color:#777;">No containers found.</p>
+  </div>
+
+  {% else %}
+  <div style="flex:1; overflow:hidden;">
+    <table style="width:100%; border-collapse:collapse; font-size:19px;">
+      <thead>
+        <tr style="border-bottom:2px solid #000;">
+          <th style="text-align:left; padding:10px 14px; width:24%;">Name</th>
+          <th style="text-align:left; padding:10px 14px; width:34%;">Image</th>
+          <th style="text-align:left; padding:10px 14px; width:14%;">Status</th>
+          <th style="text-align:left; padding:10px 14px; width:28%;">Uptime / Stopped</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in containers %}
+        {% set running = c.status == "running" %}
+        <tr style="
+          border-bottom:1px solid #ddd;
+          color:{{ '#000' if running else '#999' }};
+        ">
+          <td style="padding:10px 14px; font-weight:{{ 'bold' if running else 'normal' }};">
+            {{ c.name }}
+          </td>
+          <td style="padding:10px 14px; font-size:17px; word-break:break-all;">
+            {{ c.image }}
+          </td>
+          <td style="padding:10px 14px; font-weight:{{ 'bold' if running else 'normal' }};">
+            {{ c.status }}
+          </td>
+          <td style="padding:10px 14px;">{{ c.status_detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
