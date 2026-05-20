@@ -10,9 +10,16 @@ Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px
 
 ## Requirements
 
-- Python 3.11+
-- The server machine runs on your LAN (tested on `192.168.1.37`)
+### Server
+- Python 3.11+ (or Docker)
+- A machine on your LAN running the server
 - Docker daemon running locally (optional — /docker page degrades gracefully)
+
+### Kindle
+- **Jailbroken Kindle Oasis 3 (10th gen)** — a stock Kindle cannot run arbitrary browser apps
+  - Follow the [MobileRead jailbreak guide](https://www.mobileread.com/forums/showthread.php?t=320564) for your firmware version. also, [this video](https://www.youtube.com/watch?v=l4ZliC82RtA)
+- **KUAL** (Kindle Unified Application Launcher) installed post-jailbreak 
+- **Shortcut Browser** launches a full-screen Chromium instance pointed at a URL [link](https://github.com/mitchellurgero/kindle-shortcut-browser)
 
 ## Setup
 
