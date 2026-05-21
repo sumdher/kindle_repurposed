@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}UPS Monitor{% endblock %}
+
+{% block head_extra %}
+<meta http-equiv="refresh" content="{{ refresh_secs }}">
+{% endblock %}
+
+{# Full-width fill bar — used for battery charge and load #}
+{% macro pct_bar(pct, width=460, height=22) %}
+{%- set fill_px = ((pct | float) * width / 100) | int %}
+<svg width="{{ width }}" height="{{ height }}" style="display:block;">
+  <rect x="0" y="0" width="{{ width }}" height="{{ height }}"
+        fill="none" stroke="#000" stroke-width="2"/>
+  <rect x="0" y="0" width="{{ fill_px }}" height="{{ height }}" fill="#000"/>
+</svg>
+{%- endmacro %}
+
+{% block content %}
+{#
+  Two-panel landscape layout — mirrors weather.html structure.
+  Left panel  : 520px — status, battery, load, voltages
+  Right panel : fills remaining (~1088px) — 3 stacked 48h line graphs
+  Gap         : 40px
+#}
+<div style="display:flex; gap:40px; height:1232px; overflow:hidden;">
+
+  {# ══ LEFT PANEL ════════════════════════════════════════════════════════════ #}
+  <div class="box" style="
+    flex:0 0 520px;
+    height:1232px;
+    padding:16px 20px;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  ">
+
+    {# Title row #}
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-shrink:0;">
+      <a href="{{ back_url }}" style="
+        border:2px solid #000; border-radius:4px; padding:9px 32px 9px 20px;
+        font-size:24px; font-weight:bold; color:#000; text-decoration:none;
+      ">&#8592; Home</a>
+      <span style="font-size:28px; font-weight:bold; line-height:1;">UPS Monitor</span>
+    </div>
+
+    {# UPS model subtitle #}
+    <div style="font-size:16px; color:#666; margin-bottom:10px; flex-shrink:0;">
+      Green Cell UPSLM360 &nbsp;·&nbsp; 360 W / 650 VA
+    </div>
+
+    {# ── Unavailable state ─────────────────────────────────────────────────── #}
+    {% if not reading %}
+    <div style="flex:1; display:flex; flex-direction:column;
+                align-items:center; justify-content:center; gap:16px;">
+      {# No-signal icon #}
+      <svg width="64" height="64" viewBox="0 0 64 64" style="display:block;">
+        <line x1="8"  y1="8"  x2="56" y2="56" stroke="#ccc" stroke-width="5" stroke-linecap="round"/>
+        <line x1="56" y1="8"  x2="8"  y2="56" stroke="#ccc" stroke-width="5" stroke-linecap="round"/>
+        <rect x="4" y="4" width="56" height="56" rx="4" fill="none" stroke="#ccc" stroke-width="3"/>
+      </svg>
+      <p style="font-size:26px; font-weight:bold; color:#999;">NUT Unreachable</p>
+      <p style="font-size:16px; color:#bbb;">{{ nut_host }}:{{ nut_port }} / {{ "greencell" }}</p>
+      {% if stale %}
+      <p style="font-size:15px; color:#bbb;">Last known data shown on right →</p>
+      {% endif %}
+    </div>
+
+    {# ── Live / stale data ─────────────────────────────────────────────────── #}
+    {% else %}
+
+    {# Status badge — inverted (black fill) when on battery #}
+    <div style="margin-bottom:14px; flex-shrink:0;">
+      {% if reading.low_battery %}
+      <span style="
+        display:inline-block; padding:9px 20px;
+        border:2px solid #000; border-radius:4px;
+        background:#000; color:#fff;
+        font-size:24px; font-weight:bold; letter-spacing:0.05em;
+      ">&#9888; LOW BATTERY</span>
+      {% elif reading.on_battery %}
+      <span style="
+        display:inline-block; padding:9px 20px;
+        border:2px solid #000; border-radius:4px;
+        background:#000; color:#fff;
+        font-size:24px; font-weight:bold; letter-spacing:0.05em;
+      ">&#9889; ON BATTERY</span>
+      {% else %}
+      <span style="
+        display:inline-block; padding:9px 20px;
+        border:2px solid #000; border-radius:4px;
+        font-size:24px; font-weight:bold; letter-spacing:0.05em;
+      ">&#10003; ON LINE</span>
+      {% endif %}
+    </div>
+
+    <div style="border-top:1px solid #ddd; margin-bottom:14px; flex-shrink:0;"></div>
+
+    {# Battery section #}
+    <div style="flex-shrink:0; margin-bottom:14px;">
+      <div class="section-title" style="margin-bottom:6px;">Battery</div>
+      <div style="font-size:80px; font-weight:bold; line-height:1;
+                  letter-spacing:-3px; margin-bottom:6px;">
+        {{ reading.battery_charge }}<span style="font-size:40px; letter-spacing:0;">%</span>
+      </div>
+      {{ pct_bar(reading.battery_charge, 460, 24) }}
+      <div style="font-size:17px; color:#666; margin-top:6px;">
+        {{ "%.2f"|format(reading.battery_voltage) }} V
+        &nbsp;/&nbsp; nom {{ "%.0f"|format(reading.battery_voltage_nominal) }} V
+      </div>
+    </div>
+
+    <div style="border-top:1px solid #ddd; margin-bottom:14px; flex-shrink:0;"></div>
+
+    {# Load section #}
+    <div style="flex-shrink:0; margin-bottom:14px;">
+      <div class="section-title" style="margin-bottom:6px;">Load</div>
+      <div style="display:flex; align-items:baseline; gap:14px;
+                  margin-bottom:6px; line-height:1;">
+        <span style="font-size:60px; font-weight:bold; letter-spacing:-2px;">
+          {{ reading.watts }}<span style="font-size:30px; letter-spacing:0;"> W</span>
+        </span>
+        <span style="font-size:28px; color:#777;">{{ reading.load_pct }}%</span>
+      </div>
+      {{ pct_bar(reading.load_pct, 460, 20) }}
+    </div>
+
+    <div style="border-top:1px solid #ddd; margin-bottom:12px; flex-shrink:0;"></div>
+
+    {# Voltage & frequency grid #}
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; flex-shrink:0;">
+
+      <div class="box" style="height:130px; display:flex; flex-direction:column;
+                              align-items:center; justify-content:center; gap:4px;">
+        <span style="font-size:15px; text-transform:uppercase; letter-spacing:0.07em; color:#555;">Input</span>
+        <span style="font-size:38px; font-weight:bold; line-height:1;">{{ "%.1f"|format(reading.input_voltage) }}</span>
+        <span style="font-size:18px; color:#666;">V</span>
+      </div>
+
+      <div class="box" style="height:130px; display:flex; flex-direction:column;
+                              align-items:center; justify-content:center; gap:4px;">
+        <span style="font-size:15px; text-transform:uppercase; letter-spacing:0.07em; color:#555;">Output</span>
+        <span style="font-size:38px; font-weight:bold; line-height:1;">{{ "%.1f"|format(reading.output_voltage) }}</span>
+        <span style="font-size:18px; color:#666;">V</span>
+      </div>
+
+      <div class="box" style="height:130px; display:flex; flex-direction:column;
+                              align-items:center; justify-content:center; gap:4px;">
+        <span style="font-size:15px; text-transform:uppercase; letter-spacing:0.07em; color:#555;">Freq</span>
+        <span style="font-size:38px; font-weight:bold; line-height:1;">{{ "%.1f"|format(reading.frequency) }}</span>
+        <span style="font-size:18px; color:#666;">Hz</span>
+      </div>
+
+    </div>
+
+    {# Refresh selector — label above, boxes below #}
+    <div style="margin-top:14px; flex-shrink:0;">
+      <div style="font-size:16px; color:#666; text-transform:uppercase;
+                  letter-spacing:0.05em; margin-bottom:6px;">Refresh</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        {% for label, secs in [('10s', 10), ('30s', 30), ('1m', 60), ('5m', 300), ('15m', 900)] %}
+        <a href="?refresh={{ secs }}" style="
+          display:inline-block; padding:9px 20px;
+          border:2px solid #000; border-radius:4px;
+          text-decoration:none; font-size:24px; font-weight:bold; letter-spacing:0.05em;
+          {% if refresh_secs == secs %}background:#000; color:#fff;{% else %}background:#fff; color:#000;{% endif %}
+        ">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% endif %}
+
+    {# Footer — pushed to bottom #}
+    <div style="
+      border-top:1px solid #ccc; padding-top:8px; margin-top:auto;
+      font-size:14px; color:#777; flex-shrink:0;
+      display:flex; align-items:center; justify-content:space-between;
+    ">
+      <span>Updated {{ now }}{% if stale %} &nbsp;·&nbsp; <em>Stale</em>{% endif %}</span>
+    </div>
+
+  </div>
+  {# ══ end LEFT PANEL ════════════════════════════════════════════════════════ #}
+
+  {# ══ RIGHT PANEL — 3 stacked 48h history graphs ════════════════════════════ #}
+  <div style="flex:1; height:1232px; display:flex; flex-direction:column; overflow:hidden;">
+
+    {% if not samples %}
+    <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+      <p style="font-size:24px; color:#bbb;">No history yet — data accumulates every 5 minutes.</p>
+    </div>
+
+    {% else %}
+
+    <div class="section-title" style="margin-bottom:5px;">Load %</div>
+    <div style="height:374px; flex-shrink:0; margin-bottom:10px;">
+      {{ load_svg | safe }}
+    </div>
+
+    <div class="section-title" style="margin-bottom:5px;">Input Voltage</div>
+    <div style="height:374px; flex-shrink:0; margin-bottom:10px;">
+      {{ voltage_svg | safe }}
+    </div>
+
+    <div class="section-title" style="margin-bottom:5px;">Battery Charge %</div>
+    <div style="flex:1; overflow:hidden;">
+      {{ battery_svg | safe }}
+    </div>
+
+    {% endif %}
+
+  </div>
+  {# ══ end RIGHT PANEL ═══════════════════════════════════════════════════════ #}
+
+</div>
+{% endblock %}

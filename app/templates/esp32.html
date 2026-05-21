@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}ESP32 Sensors{% endblock %}
+
+{% block head_extra %}
+<meta http-equiv="refresh" content="{{ refresh_secs }}">
+{% endblock %}
+
+{% block content %}
+{#
+  Two-panel landscape layout.
+  Left panel  : 520px — current sensor readings (large text)
+  Right panel : fills remaining (~1088px) — 3 stacked 48h line graphs
+  Gap         : 40px
+#}
+<div style="display:flex; gap:40px; height:1232px; overflow:hidden;">
+
+  {# ══ LEFT PANEL ════════════════════════════════════════════════════════════ #}
+  <div class="box" style="
+    flex:0 0 520px;
+    height:1232px;
+    padding:16px 20px;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  ">
+
+    {# Title row #}
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-shrink:0;">
+      <a href="{{ back_url }}" style="
+        border:2px solid #000; border-radius:4px; padding:9px 32px 9px 20px;
+        font-size:24px; font-weight:bold; color:#000; text-decoration:none;
+      ">&#8592; Home</a>
+      <span style="font-size:28px; font-weight:bold; line-height:1;">ESP32 Sensors</span>
+    </div>
+
+    {# Device + online indicator #}
+    <div style="display:flex; align-items:center; gap:12px;
+                margin-bottom:12px; flex-shrink:0;
+                border-bottom:1px solid #ddd; padding-bottom:10px;">
+      <span style="font-size:17px; color:#555;">
+        {{ reading.device if reading else "esp32s3-01" }}
+      </span>
+      {% if reading and reading.online %}
+      <span style="
+        display:inline-block; width:12px; height:12px;
+        border-radius:50%; background:#000;
+        border:2px solid #000;
+      "></span>
+      <span style="font-size:15px; font-weight:bold; letter-spacing:0.05em;">ONLINE</span>
+      {% else %}
+      <span style="
+        display:inline-block; width:12px; height:12px;
+        border-radius:50%; background:#fff;
+        border:2px solid #bbb;
+      "></span>
+      <span style="font-size:15px; color:#bbb; letter-spacing:0.05em;">OFFLINE</span>
+      {% endif %}
+    </div>
+
+    {# ── Unavailable / error state ─────────────────────────────────────────── #}
+    {% if error %}
+    <div style="flex:1; display:flex; flex-direction:column;
+                align-items:center; justify-content:center; gap:16px;">
+      <svg width="64" height="64" viewBox="0 0 64 64" style="display:block;">
+        <line x1="8"  y1="8"  x2="56" y2="56" stroke="#ccc" stroke-width="5" stroke-linecap="round"/>
+        <line x1="56" y1="8"  x2="8"  y2="56" stroke="#ccc" stroke-width="5" stroke-linecap="round"/>
+        <rect x="4" y="4" width="56" height="56" rx="4" fill="none" stroke="#ccc" stroke-width="3"/>
+      </svg>
+      <p style="font-size:22px; font-weight:bold; color:#999; text-align:center;">InfluxDB Unavailable</p>
+      <p style="font-size:15px; color:#bbb; text-align:center; max-width:420px;">{{ error }}</p>
+    </div>
+
+    {% elif not reading %}
+    <div style="flex:1; display:flex; flex-direction:column;
+                align-items:center; justify-content:center; gap:16px;">
+      <p style="font-size:22px; color:#999; text-align:center;">No data in the last 10 minutes.</p>
+      <p style="font-size:15px; color:#bbb; text-align:center;">
+        Check that the ESP32 is powered and publishing to MQTT.
+      </p>
+    </div>
+
+    {# ── Live readings ─────────────────────────────────────────────────────── #}
+    {% else %}
+
+    {# Metrics — each in a flex row, sharing the remaining height equally #}
+    <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+
+      {# Temperature — biggest, most important #}
+      <div class="metric" style="flex:2; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Temperature</span>
+        <span style="font-size:100px; font-weight:bold; line-height:1;
+                     letter-spacing:-4px;">
+          {{ "%.1f"|format(reading.temperature) }}<span style="font-size:50px; letter-spacing:0;">°C</span>
+        </span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Humidity</span>
+        <span class="metric-value" style="font-size:42px;">
+          {{ "%.1f"|format(reading.humidity) if reading.humidity is not none else "—" }}%
+        </span>
+      </div>
+
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Pressure</span>
+        <span class="metric-value" style="font-size:36px;">
+          {{ "%.1f"|format(reading.pressure) if reading.pressure is not none else "—" }}
+          <span style="font-size:20px; color:#555;"> hPa</span>
+        </span>
+      </div>
+
+      {% if reading.gas is not none %}
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center; border-bottom:1px solid #e8e8e8;">
+        <span class="metric-label">Gas Resistance</span>
+        <span class="metric-value" style="font-size:32px;">
+          {{ "%.0f"|format(reading.gas / 1000) if reading.gas > 1000 else "%.0f"|format(reading.gas) }}
+          <span style="font-size:18px; color:#555;">
+            {{ "kΩ" if reading.gas > 1000 else "Ω" }}
+          </span>
+        </span>
+      </div>
+      {% endif %}
+
+      {% if reading.rssi is not none %}
+      <div class="metric" style="flex:1; display:flex; flex-direction:column;
+           justify-content:center;">
+        <span class="metric-label">Wi-Fi Signal</span>
+        <span class="metric-value" style="font-size:32px;">
+          {{ reading.rssi }}
+          <span style="font-size:18px; color:#555;"> dBm</span>
+          <span style="font-size:18px; color:#888; margin-left:10px;">
+            {% if reading.rssi >= -60 %}Excellent
+            {% elif reading.rssi >= -70 %}Good
+            {% elif reading.rssi >= -80 %}Fair
+            {% else %}Weak{% endif %}
+          </span>
+        </span>
+      </div>
+      {% endif %}
+
+    </div>
+    {% endif %}
+
+    {# Footer #}
+    <div style="
+      border-top:1px solid #ccc; padding-top:8px; margin-top:8px;
+      font-size:14px; color:#777; flex-shrink:0;
+    ">
+      {% if reading and reading.updated_at %}
+      Last reading: {{ reading.updated_at.strftime("%H:%M:%S, %d %b") }}
+      {% else %}
+      Updated: {{ now }}
+      {% endif %}
+    </div>
+
+  </div>
+  {# ══ end LEFT PANEL ════════════════════════════════════════════════════════ #}
+
+  {# ══ RIGHT PANEL — 3 stacked 48h history graphs ════════════════════════════ #}
+  <div style="flex:1; height:1232px; display:flex; flex-direction:column; overflow:hidden;">
+
+    {% if error or not history %}
+    <div style="flex:1; display:flex; flex-direction:column;
+                align-items:center; justify-content:center; gap:14px;">
+      {% if error %}
+      <p style="font-size:28px; font-weight:bold; color:#999;">InfluxDB Unavailable</p>
+      <p style="font-size:18px; color:#bbb; max-width:700px; text-align:center;">{{ error }}</p>
+      {% else %}
+      <p style="font-size:24px; color:#bbb;">No historical data found.</p>
+      <p style="font-size:17px; color:#bbb;">History requires the MQTT subscriber and InfluxDB to be running.</p>
+      {% endif %}
+    </div>
+
+    {% else %}
+
+    <div class="section-title" style="margin-bottom:5px;">Temperature (°C)</div>
+    <div style="height:374px; flex-shrink:0; margin-bottom:10px;">
+      {{ temp_svg | safe }}
+    </div>
+
+    <div class="section-title" style="margin-bottom:5px;">Humidity (%)</div>
+    <div style="height:374px; flex-shrink:0; margin-bottom:10px;">
+      {{ humid_svg | safe }}
+    </div>
+
+    <div class="section-title" style="margin-bottom:5px;">Pressure (hPa)</div>
+    <div style="flex:1; overflow:hidden;">
+      {{ press_svg | safe }}
+    </div>
+
+    {% endif %}
+
+  </div>
+  {# ══ end RIGHT PANEL ═══════════════════════════════════════════════════════ #}
+
+</div>
+{% endblock %}

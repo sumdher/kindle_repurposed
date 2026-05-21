@@ -2,19 +2,19 @@
 Kindle e-ink landscape dashboard — FastAPI entry point.
 
 Physical display: 1264×1680px portrait. Effective browser viewport: 1264×1465px.
-The Kindle is used rotated 90° clockwise (power button right), so the viewer sees
-a landscape 1465×1264px area. We achieve this by designing a 1465×1264 .page div
-and rotating it with CSS:  transform: translateY(1465px) rotate(-90deg).
+Landscape via CSS: .page is 1680×1264px rotated -90° with transform-origin: 0 0.
 
-Layout inside .page (landscape, 1465×1264):
-  Padding: 16px all sides → content: 1433×1232px
-  Left panel (420px wide) : current conditions, daily summary
-  Gap (20px)
-  Right panel (993px wide): hourly chart + 48h graphs
+KINDLE_SERVICE env var controls which APScheduler jobs run in this process:
+  weather  → weather backfill + 2h collection job
+  ups      → UPS 5-min history collection job
+  docker   → no background jobs (stats fetched per request)
+  esp32    → no background jobs (InfluxDB queried per request)
+  all      → all jobs (single-container dev mode)
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import socket
@@ -30,47 +30,69 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.docker_client import get_containers
+from app.esp32_client import fetch_latest as fetch_esp32_latest
+from app.esp32_client import fetch_history as fetch_esp32_history
 from app.store import WeatherSample, store
-from app.svg import hourly_chart, line_graph, weather_icon_svg, wmo_icon_key
+from app.svg import docker_bar_chart, hourly_chart, line_graph, weather_icon_svg, wmo_icon_key
+from app.ups_client import UpsSample, _ups_cache, get_ups_reading, ups_store
 from app.weather import (
-    CurrentWeather,
-    DailyForecast,
-    HourlyPoint,
-    fetch_current_and_hourly,
-    fetch_historical_samples,
-    wind_direction_text,
-    wmo_label,
+    fetch_current_and_hourly, fetch_historical_samples,
+    wind_direction_text, wmo_label,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-ROME_TZ = pytz.timezone("Europe/Rome")
-PORT      = 8080   # container-internal
-HOST_PORT = 8888   # host port mapped in docker-compose
+ROME_TZ  = pytz.timezone("Europe/Rome")
+PORT      = 8080   # container-internal port
+HOST_PORT = 8888   # default host port (k_weathermon)
 
 # ---------------------------------------------------------------------------
-# Landscape SVG dimensions
-#
-# Right panel is 993px wide, 1232px tall. Vertical split:
-#   26 (hourly label) + 6 + 325 (hourly chart) + 14 + 26 (graph label) + 6 + 829 = 1232
+# Configuration from environment
 # ---------------------------------------------------------------------------
-RIGHT_W   = 1088
-HOURLY_H  = 325
-# Graphs are stacked vertically (full right-panel width each).
-# Heights: 1232 - 26(hourly title) - 5 - 325(hourly) - 14 - 26(graph title) - 5 = 831px
-# Two graphs stacked with 10px gap: (831 - 10) / 2 = 410px each.
-GRAPH_W   = RIGHT_W   # 893 — full right-panel width
-GRAPH_H   = 410
+
+SERVICE      = os.environ.get("KINDLE_SERVICE", "all")   # weather|docker|ups|esp32|all
+ANNOUNCE_IP  = os.environ.get("ANNOUNCE_IP", "")
+LANDING_URL  = os.environ.get("LANDING_URL", "/")        # back-button target
+
+# Cross-service navigation URLs (set in docker-compose for multi-container mode)
+WEATHER_URL  = os.environ.get("WEATHER_URL",  "/weather")
+DOCKER_URL   = os.environ.get("DOCKER_URL",   "/docker")
+UPS_URL      = os.environ.get("UPS_URL",      "/ups")
+ESP32_URL    = os.environ.get("ESP32_URL",    "/esp32")
+
+# NUT (UPS) settings
+NUT_HOST     = os.environ.get("NUT_HOST",  "127.0.0.1")
+NUT_PORT     = int(os.environ.get("NUT_PORT",  "3493"))
+UPS_NAME_CFG = os.environ.get("UPS_NAME",  "greencell")
+
+# InfluxDB (ESP32) settings
+INFLUX_URL    = os.environ.get("INFLUX_URL",    "")
+INFLUX_TOKEN  = os.environ.get("INFLUX_TOKEN",  "")
+INFLUX_ORG    = os.environ.get("INFLUX_ORG",    "home")
+INFLUX_BUCKET = os.environ.get("INFLUX_BUCKET", "esp32")
 
 # ---------------------------------------------------------------------------
-# In-memory cache for last successful fetch
+# SVG layout constants
 # ---------------------------------------------------------------------------
-_cache: dict = {
-    "current": None,
-    "daily":   None,
-    "hourly":  [],
-    "stale":   False,
+
+# Right panel: 1648 - 520(left) - 40(gap) = 1088px wide, 1232px tall
+RIGHT_W  = 1088
+HOURLY_H = 325
+GRAPH_W  = RIGHT_W
+GRAPH_H  = 410
+
+# UPS / ESP32 right panel: 3 graphs stacked
+# 1232 - 3×(22+5)(titles) - 2×10(gaps) = 1232 - 81 - 20 = 1131 → 377 each
+AUX_GRAPH_W = 1088
+AUX_GRAPH_H = 374
+
+# ---------------------------------------------------------------------------
+# In-memory caches for last successful fetches
+# ---------------------------------------------------------------------------
+
+_weather_cache: dict = {
+    "current": None, "daily": None, "hourly": [], "stale": False,
 }
 
 
@@ -86,13 +108,13 @@ async def _collect_weather() -> None:
             pressure_hpa=current.pressure,
             wind_speed_kmh=current.wind_speed,
         ))
-        _cache.update({"current": current, "daily": daily, "hourly": hourly, "stale": False})
-        logger.info(
-            "Weather: %.1f°C, %.1f hPa, %.1f km/h",
-            current.temperature, current.pressure, current.wind_speed,
-        )
+        _weather_cache.update({
+            "current": current, "daily": daily, "hourly": hourly, "stale": False,
+        })
+        logger.info("Weather: %.1f°C %.1f hPa %.1f km/h",
+                    current.temperature, current.pressure, current.wind_speed)
     else:
-        _cache["stale"] = True
+        _weather_cache["stale"] = True
         logger.warning("Weather fetch failed — serving stale data")
 
 
@@ -101,11 +123,31 @@ async def _backfill() -> None:
     two_hourly = [s for s in historical if s[0].hour % 2 == 0]
     for ts, pressure, wind in two_hourly[-24:]:
         store.append(WeatherSample(timestamp=ts, pressure_hpa=pressure, wind_speed_kmh=wind))
-    logger.info("Backfilled store with %d samples", len(store.get_all()))
+    logger.info("Weather backfill: %d samples", len(store.get_all()))
+
+
+async def _collect_ups() -> None:
+    reading = await asyncio.to_thread(
+        get_ups_reading, NUT_HOST, NUT_PORT, UPS_NAME_CFG
+    )
+    if reading is not None:
+        ups_store.append(UpsSample(
+            timestamp=reading.updated_at,
+            load_pct=reading.load_pct,
+            watts=reading.watts,
+            input_voltage=reading.input_voltage,
+            battery_charge=reading.battery_charge,
+        ))
+        _ups_cache.update({"reading": reading, "stale": False})
+        logger.info("UPS: %s load=%d%% bat=%d%%",
+                    reading.status, reading.load_pct, reading.battery_charge)
+    else:
+        _ups_cache["stale"] = True
+        logger.warning("UPS poll failed — serving stale data")
 
 
 # ---------------------------------------------------------------------------
-# Lifespan
+# Lifespan — start only the jobs needed for this service
 # ---------------------------------------------------------------------------
 
 scheduler = AsyncIOScheduler(timezone=ROME_TZ)
@@ -113,17 +155,23 @@ scheduler = AsyncIOScheduler(timezone=ROME_TZ)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await _backfill()
-    await _collect_weather()
+    if SERVICE in ("all", "weather"):
+        await _backfill()
+        await _collect_weather()
+        scheduler.add_job(_collect_weather, "interval", hours=2, id="weather")
 
-    scheduler.add_job(_collect_weather, "interval", hours=2, id="weather")
-    scheduler.start()
+    if SERVICE in ("all", "ups"):
+        await _collect_ups()
+        scheduler.add_job(_collect_ups, "interval", minutes=5, id="ups")
 
-    ip = os.environ.get("ANNOUNCE_IP") or _local_ip()
-    print(f"\n  Open on Kindle:  http://{ip}:{HOST_PORT}/weather\n", flush=True)
+    if scheduler.get_jobs():
+        scheduler.start()
+
+    ip = ANNOUNCE_IP or _local_ip()
+    print(f"\n  Kindle Dashboard [{SERVICE}]:  http://{ip}:{HOST_PORT}/\n", flush=True)
 
     yield
-    scheduler.shutdown()
+    scheduler.shutdown(wait=False)
 
 
 # ---------------------------------------------------------------------------
@@ -136,35 +184,43 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 @app.middleware("http")
-async def no_cache_static(request: Request, call_next):
+async def no_cache_headers(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/static"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
 
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+    ctx = {
+        "weather_url": WEATHER_URL,
+        "docker_url":  DOCKER_URL,
+        "ups_url":     UPS_URL,
+        "esp32_url":   ESP32_URL,
+    }
+    return templates.TemplateResponse(request, "index.html", ctx)
 
 
 @app.get("/weather", response_class=HTMLResponse)
 async def weather_page(request: Request):
     current, daily, hourly = await fetch_current_and_hourly()
     if current is None:
-        current = _cache.get("current")
-        daily   = _cache.get("daily")
-        hourly  = _cache.get("hourly") or []
+        current = _weather_cache.get("current")
+        daily   = _weather_cache.get("daily")
+        hourly  = _weather_cache.get("hourly") or []
         stale   = True
     else:
-        _cache.update({"current": current, "daily": daily, "hourly": hourly, "stale": False})
+        _weather_cache.update({
+            "current": current, "daily": daily, "hourly": hourly, "stale": False,
+        })
         stale = False
-        # NOTE: do NOT write to store here. store is written only by _collect_weather()
-        # (APScheduler, every 2h). Writing on every page-load would flood the deque with
-        # 5-min-interval samples, making the 48h graphs useless.
 
-    samples = store.get_all()
-
+    samples      = store.get_all()
     pressure_svg = line_graph(samples, "pressure_hpa", GRAPH_W, GRAPH_H,
                               "Atmospheric Pressure (48h)", "hPa")
     wind_svg     = line_graph(samples, "wind_speed_kmh", GRAPH_W, GRAPH_H,
@@ -183,19 +239,120 @@ async def weather_page(request: Request):
         "hourly_svg":      hourly_svg,
         "now":             datetime.now(ROME_TZ).strftime("%H:%M, %d %b %Y"),
         "today_date":      datetime.now(ROME_TZ).strftime("%A, %d %B %Y"),
+        "back_url":        LANDING_URL,
     }
     return templates.TemplateResponse(request, "weather.html", ctx)
 
 
 @app.get("/docker", response_class=HTMLResponse)
-async def docker_page(request: Request):
-    containers, error = get_containers()
+async def docker_page(request: Request, refresh: int = 15):
+    containers, error = await asyncio.to_thread(get_containers)
+    refresh_secs  = max(5, min(refresh, 900))
+    running_count = sum(1 for c in containers if c.status == "running")
+    with_stats    = [c for c in containers if c.stats_ok]
+
+    cpu_sorted = sorted(with_stats, key=lambda c: c.cpu_pct, reverse=True)[:8]
+    cpu_max    = max((c.cpu_pct for c in cpu_sorted), default=1.0) or 1.0
+    cpu_chart  = docker_bar_chart(
+        [(c.name, c.cpu_pct) for c in cpu_sorted], cpu_max, 448, 460)
+
+    mem_sorted = sorted(with_stats, key=lambda c: c.mem_pct, reverse=True)[:8]
+    mem_chart  = docker_bar_chart(
+        [(c.name, c.mem_pct) for c in mem_sorted], 100.0, 448, 460)
+
     ctx = {
-        "containers": containers,
-        "error":      error,
-        "now":        datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
+        "containers":    containers,
+        "error":         error,
+        "now":           datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
+        "refresh_secs":  refresh_secs,
+        "running_count": running_count,
+        "stopped_count": len(containers) - running_count,
+        "cpu_chart":     cpu_chart,
+        "mem_chart":     mem_chart,
+        "back_url":      LANDING_URL,
     }
     return templates.TemplateResponse(request, "docker.html", ctx)
+
+
+@app.get("/ups", response_class=HTMLResponse)
+async def ups_page(request: Request, refresh: int = 30):
+    # Always try a live poll; fall back to cache if NUT is unreachable.
+    reading = await asyncio.to_thread(
+        get_ups_reading, NUT_HOST, NUT_PORT, UPS_NAME_CFG
+    )
+    if reading is not None:
+        _ups_cache.update({"reading": reading, "stale": False})
+        stale = False
+        # Append to store on page load, but at most once per minute, so graphs
+        # update on every visible refresh without flooding the 48h deque.
+        if not ups_store or (reading.updated_at - ups_store[-1].timestamp).total_seconds() >= 60:
+            ups_store.append(UpsSample(
+                timestamp=reading.updated_at,
+                load_pct=reading.load_pct,
+                watts=reading.watts,
+                input_voltage=reading.input_voltage,
+                battery_charge=reading.battery_charge,
+            ))
+    else:
+        reading = _ups_cache.get("reading")
+        stale   = True
+
+    samples = list(ups_store)
+
+    def _svg(attr: str, title: str, unit: str) -> str:
+        return line_graph(samples, attr, AUX_GRAPH_W, AUX_GRAPH_H, title, unit) if samples else ""
+
+    refresh_secs = max(10, min(refresh, 900))
+    ctx = {
+        "reading":      reading,
+        "stale":        stale,
+        "nut_host":     NUT_HOST,
+        "nut_port":     NUT_PORT,
+        "load_svg":     _svg("load_pct",       "Load %",           "%"),
+        "voltage_svg":  _svg("input_voltage",  "Input Voltage",    "V"),
+        "battery_svg":  _svg("battery_charge", "Battery Charge",   "%"),
+        "refresh_secs": refresh_secs,
+        "now":          datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
+        "back_url":     LANDING_URL,
+        "samples":      samples,
+    }
+    return templates.TemplateResponse(request, "ups.html", ctx)
+
+
+@app.get("/esp32", response_class=HTMLResponse)
+async def esp32_page(request: Request, refresh: int = 60):
+    reading = None
+    history  = []
+    error    = None
+
+    if not INFLUX_URL or not INFLUX_TOKEN:
+        error = "InfluxDB not configured — set INFLUX_URL and INFLUX_TOKEN env vars."
+    else:
+        try:
+            reading = await fetch_esp32_latest(
+                INFLUX_URL, INFLUX_TOKEN, INFLUX_ORG, INFLUX_BUCKET)
+            history = await fetch_esp32_history(
+                INFLUX_URL, INFLUX_TOKEN, INFLUX_ORG, INFLUX_BUCKET)
+        except Exception as exc:
+            error = str(exc)
+            logger.warning("ESP32 data fetch error: %s", exc)
+
+    def _svg(attr: str, title: str, unit: str) -> str:
+        return line_graph(history, attr, AUX_GRAPH_W, AUX_GRAPH_H, title, unit) if history else ""
+
+    refresh_secs = max(30, min(refresh, 900))
+    ctx = {
+        "reading":      reading,
+        "error":        error,
+        "temp_svg":     _svg("temperature", "Temperature",    "°C"),
+        "humid_svg":    _svg("humidity",    "Humidity",       "%"),
+        "press_svg":    _svg("pressure",    "Pressure",       "hPa"),
+        "refresh_secs": refresh_secs,
+        "now":          datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
+        "back_url":     LANDING_URL,
+        "history":      history,
+    }
+    return templates.TemplateResponse(request, "esp32.html", ctx)
 
 
 # ---------------------------------------------------------------------------

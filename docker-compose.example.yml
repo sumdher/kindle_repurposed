@@ -1,0 +1,89 @@
+##
+## kindle_repurposed — e-ink Kindle dashboard, split into 4 independent services.
+##
+## All 4 services use the same Docker image built from this repo.
+## KINDLE_SERVICE tells each container which APScheduler jobs to run.
+## Navigation URLs are passed as env vars so each container knows
+## how to link to its siblings (using the host LAN IP + port).
+##
+## Ports (host → container):
+##   8888 → k_weathermon  (also serves the landing page "/")
+##   8882 → k_dockermon
+##   8883 → k_upsmon
+##   8884 → k_esp32mon
+##
+## Copy to docker-compose.yml and set YOUR_LAN_IP to your host's LAN IP.
+##
+
+x-common: &common
+  build: .
+  image: kindle-repurposed:latest
+  restart: unless-stopped
+  volumes:
+    - ./app:/srv/kindle/app   # live-reload: changes apply without rebuild
+
+services:
+
+  # ── Weather monitor ────────────────────────────────────────────────────────
+  k_weathermon:
+    <<: *common
+    container_name: k_weathermon
+    ports:
+      - "8888:8080"
+    environment:
+      - TZ=Europe/Rome
+      - KINDLE_SERVICE=weather
+      - ANNOUNCE_IP=YOUR_LAN_IP
+      # Landing page is this container itself
+      - LANDING_URL=http://YOUR_LAN_IP:8888
+      # Links used on the landing page (index.html)
+      - WEATHER_URL=http://YOUR_LAN_IP:8888/weather
+      - DOCKER_URL=http://YOUR_LAN_IP:8882/docker
+      - UPS_URL=http://YOUR_LAN_IP:8883/ups
+      - ESP32_URL=http://YOUR_LAN_IP:8884/esp32
+
+  # ── Docker monitor ─────────────────────────────────────────────────────────
+  k_dockermon:
+    <<: *common
+    container_name: k_dockermon
+    ports:
+      - "8882:8080"
+    volumes:
+      - ./app:/srv/kindle/app
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # required for container stats
+    environment:
+      - TZ=Europe/Rome
+      - KINDLE_SERVICE=docker
+      - LANDING_URL=http://YOUR_LAN_IP:8888
+
+  # ── UPS monitor ────────────────────────────────────────────────────────────
+  k_upsmon:
+    <<: *common
+    container_name: k_upsmon
+    ports:
+      - "8883:8080"
+    environment:
+      - TZ=Europe/Rome
+      - KINDLE_SERVICE=ups
+      - LANDING_URL=http://YOUR_LAN_IP:8888
+      # NUT daemon must be reachable from the container.
+      # If upsd runs on the host use the host's LAN IP (not 127.0.0.1).
+      - NUT_HOST=YOUR_LAN_IP
+      - NUT_PORT=3493
+      - UPS_NAME=greencell
+
+  # ── ESP32 sensor monitor ───────────────────────────────────────────────────
+  k_esp32mon:
+    <<: *common
+    container_name: k_esp32mon
+    ports:
+      - "8884:8080"
+    environment:
+      - TZ=Europe/Rome
+      - KINDLE_SERVICE=esp32
+      - LANDING_URL=http://YOUR_LAN_IP:8888
+      # InfluxDB from the iot_stack_pipeline project (host port 8086)
+      - INFLUX_URL=http://YOUR_LAN_IP:8086
+      - INFLUX_TOKEN=your-influxdb-token-here
+      - INFLUX_ORG=home
+      - INFLUX_BUCKET=esp32

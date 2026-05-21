@@ -1,71 +1,237 @@
 {% extends "base.html" %}
-{% block title %}Docker Containers{% endblock %}
+{% block title %}Docker Monitor{% endblock %}
 
-{# 30-second refresh — containers change state frequently #}
 {% block head_extra %}
-<meta http-equiv="refresh" content="30">
+<meta http-equiv="refresh" content="{{ refresh_secs }}">
 {% endblock %}
 
+{# Mini inline progress bar macro — used in the right-panel table #}
+{% macro bar(pct, width=50, height=12) %}
+{%- set fill_w = [[pct | float, 0] | max, 100] | min %}
+{%- set fill_px = (fill_w * width / 100) | int %}
+<svg width="{{ width }}" height="{{ height }}" style="display:inline-block;vertical-align:middle;">
+  <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="none" stroke="#000" stroke-width="1"/>
+  <rect x="0" y="0" width="{{ fill_px }}" height="{{ height }}" fill="#000"/>
+</svg>
+{%- endmacro %}
+
 {% block content %}
-<!-- Landscape content area: 1433×1232px -->
-<div style="height:1232px; display:flex; flex-direction:column;">
+{#
+  Two-panel landscape layout.
+  Left panel  : 480px — summary, refresh selector, two SVG bar charts (CPU + Memory)
+  Right panel : fills remaining — container table, no Image column, large text
+  Gap         : 40px
+  Total content width: 1648px (1680 - 16px padding each side)
+#}
+<div style="display:flex; gap:40px; height:1232px; overflow:hidden;">
 
-  <!-- Header -->
-  <div style="
-    display:flex; align-items:baseline; justify-content:space-between;
-    border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:18px;
-    flex-shrink:0;
+  {# ══ LEFT PANEL ════════════════════════════════════════════════════════════ #}
+  <div class="box" style="
+    flex:0 0 480px;
+    height:1232px;
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
   ">
-    <h1 style="font-size:34px;">Docker Containers</h1>
-    <span style="font-size:16px; color:#555;">{{ now }}</span>
-  </div>
 
-  {% if error %}
-  <div style="flex:1; display:flex; flex-direction:column;
-              align-items:center; justify-content:center; gap:16px;">
-    <p style="font-size:30px; font-weight:bold;">Docker not available</p>
-    <p style="font-size:18px; color:#777;">{{ error }}</p>
-  </div>
+    {# Title row: back link + heading #}
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:8px; flex-shrink:0;">
+      <a href="/" style="
+        display:inline-flex; align-items:center; justify-content:center;
+        border:2px solid #000; border-radius:4px;
+        padding:9px 32px 9px 20px;
+        font-size:24px; font-weight:bold; color:#000; text-decoration:none;
+        letter-spacing:0.03em;
+      ">&#8592; Home</a>
+      <span style="font-size:28px; font-weight:bold; line-height:1;">Docker Monitor</span>
+    </div>
 
-  {% elif not containers %}
-  <div style="flex:1; display:flex; align-items:center; justify-content:center;">
-    <p style="font-size:24px; color:#777;">No containers found.</p>
-  </div>
+    {# Summary counts + timestamp #}
+    <div style="display:flex; align-items:baseline; justify-content:space-between;
+                margin-bottom:8px; flex-shrink:0; border-bottom:1px solid #ddd; padding-bottom:8px;">
+      <div style="font-size:18px;">
+        <strong>{{ running_count }}</strong>
+        <span style="color:#777; font-size:15px;"> running</span>
+        &nbsp;·&nbsp;
+        <span style="color:#aaa;">{{ stopped_count }}</span>
+        <span style="color:#bbb; font-size:15px;"> stopped</span>
+      </div>
+      <span style="font-size:14px; color:#777;">{{ now }}</span>
+    </div>
 
-  {% else %}
-  <div style="flex:1; overflow:hidden;">
-    <table style="width:100%; border-collapse:collapse; font-size:19px;">
+    {# Refresh interval selector — pure links #}
+    <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px; flex-shrink:0;">
+      <span style="font-size:13px; color:#666; text-transform:uppercase; letter-spacing:0.05em; margin-right:3px;">Refresh</span>
+      {% for label, secs in [('5s', 5), ('15s', 15), ('1m', 60), ('5m', 300), ('15m', 900)] %}
+      <a href="?refresh={{ secs }}" style="
+        display:inline-block; padding:5px 11px;
+        border:2px solid #000; border-radius:3px;
+        text-decoration:none; font-size:14px; font-weight:bold;
+        {% if refresh_secs == secs %}background:#000; color:#fff;{% else %}background:#fff; color:#000;{% endif %}
+      ">{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    {% if error %}
+    {# No charts when Docker is unavailable #}
+    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;">
+      <p style="font-size:22px; font-weight:bold; text-align:center;">Docker not available</p>
+      <p style="font-size:14px; color:#777; text-align:center;">{{ error }}</p>
+    </div>
+
+    {% else %}
+
+    {# ── CPU chart ──────────────────────────────────────────────────────────── #}
+    <div style="flex-shrink:0; margin-bottom:10px;">
+      <div class="section-title" style="margin-bottom:6px;">CPU Usage</div>
+      {{ cpu_chart | safe }}
+    </div>
+
+    {# Divider #}
+    <div style="border-top:1px solid #ccc; margin-bottom:10px; flex-shrink:0;"></div>
+
+    {# ── Memory chart ───────────────────────────────────────────────────────── #}
+    <div style="flex:1; overflow:hidden; display:flex; flex-direction:column;">
+      <div class="section-title" style="margin-bottom:6px;">Memory %</div>
+      <div style="flex:1; overflow:hidden;">
+        {{ mem_chart | safe }}
+      </div>
+    </div>
+
+    {% endif %}
+
+  </div>
+  {# ══ end LEFT PANEL ════════════════════════════════════════════════════════ #}
+
+  {# ══ RIGHT PANEL ══════════════════════════════════════════════════════════ #}
+  <div style="flex:1; height:1232px; display:flex; flex-direction:column; overflow:hidden;">
+
+    {% if error %}
+    <div style="flex:1; display:flex; flex-direction:column;
+                align-items:center; justify-content:center; gap:20px;">
+      <p style="font-size:34px; font-weight:bold;">Docker not available</p>
+      <p style="font-size:20px; color:#777;">{{ error }}</p>
+    </div>
+
+    {% elif not containers %}
+    <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+      <p style="font-size:28px; color:#777;">No containers found.</p>
+    </div>
+
+    {% else %}
+    {# Table — no Image column, large text for readability #}
+    <table style="
+      width:100%;
+      table-layout:fixed;
+      border-collapse:collapse;
+      font-size:26px;
+      font-family:Georgia,'Times New Roman',serif;
+    ">
+      {# Columns: Name(22%) Status(8%) Uptime(12%) CPU%(20%) Memory(22%) Net(16%) #}
+      <colgroup>
+        <col style="width:22%">
+        <col style="width:8%">
+        <col style="width:12%">
+        <col style="width:20%">
+        <col style="width:22%">
+        <col style="width:16%">
+      </colgroup>
       <thead>
-        <tr style="border-bottom:2px solid #000;">
-          <th style="text-align:left; padding:10px 14px; width:24%;">Name</th>
-          <th style="text-align:left; padding:10px 14px; width:34%;">Image</th>
-          <th style="text-align:left; padding:10px 14px; width:14%;">Status</th>
-          <th style="text-align:left; padding:10px 14px; width:28%;">Uptime / Stopped</th>
+        <tr style="border-bottom:2px solid #000; background:#f5f5f5;">
+          <th style="text-align:left; padding:10px 14px; font-size:15px;
+                     text-transform:uppercase; letter-spacing:0.07em; color:#444;">Name</th>
+          <th style="text-align:left; padding:10px 8px; font-size:15px;
+                     text-transform:uppercase; letter-spacing:0.07em; color:#444;">Status</th>
+          <th style="text-align:left; padding:10px 8px; font-size:15px;
+                     text-transform:uppercase; letter-spacing:0.07em; color:#444;">Uptime</th>
+          <th style="text-align:left; padding:10px 8px; font-size:15px;
+                     text-transform:uppercase; letter-spacing:0.07em; color:#444;">CPU %</th>
+          <th style="text-align:left; padding:10px 8px; font-size:15px;
+                     text-transform:uppercase; letter-spacing:0.07em; color:#444;">Memory</th>
+          <th style="text-align:left; padding:10px 8px; font-size:15px;
+                     text-transform:uppercase; letter-spacing:0.07em; color:#444;">Net ↓ / ↑</th>
         </tr>
       </thead>
       <tbody>
         {% for c in containers %}
         {% set running = c.status == "running" %}
         <tr style="
-          border-bottom:1px solid #ddd;
-          color:{{ '#000' if running else '#999' }};
+          border-bottom:1px solid {{ '#ddd' if running else '#eee' }};
+          color:{{ '#000' if running else '#bbb' }};
         ">
-          <td style="padding:10px 14px; font-weight:{{ 'bold' if running else 'normal' }};">
+          {# Name #}
+          <td style="padding:11px 14px; font-weight:{{ 'bold' if running else 'normal' }};
+                     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:26px;">
             {{ c.name }}
           </td>
-          <td style="padding:10px 14px; font-size:17px; word-break:break-all;">
-            {{ c.image }}
+
+          {# Status badge #}
+          <td style="padding:11px 8px; white-space:nowrap;">
+            {% if running %}
+            <span style="
+              display:inline-block; padding:2px 8px;
+              border:2px solid #000; border-radius:2px;
+              font-size:13px; font-weight:bold; letter-spacing:0.05em;
+            ">RUN</span>
+            {% else %}
+            <span style="font-size:13px; color:#bbb; letter-spacing:0.03em;">
+              {{ c.status | upper | truncate(6, true, '') }}
+            </span>
+            {% endif %}
           </td>
-          <td style="padding:10px 14px; font-weight:{{ 'bold' if running else 'normal' }};">
-            {{ c.status }}
+
+          {# Uptime #}
+          <td style="padding:11px 8px; font-size:24px; white-space:nowrap;">
+            {{ c.status_detail }}
           </td>
-          <td style="padding:10px 14px;">{{ c.status_detail }}</td>
+
+          {# CPU % #}
+          <td style="padding:11px 8px; white-space:nowrap;">
+            {% if c.stats_ok %}
+            {%- set cpu_clamped = [c.cpu_pct, 100] | min %}
+            {{ bar(cpu_clamped, 50, 12) }}
+            <span style="font-size:24px; margin-left:7px; font-variant-numeric:tabular-nums;">
+              {{ "%.1f"|format(c.cpu_pct) }}%
+            </span>
+            {% else %}
+            <span style="color:#ccc; font-size:24px;">—</span>
+            {% endif %}
+          </td>
+
+          {# Memory #}
+          <td style="padding:11px 8px; white-space:nowrap;">
+            {% if c.stats_ok and c.mem_limit_mb > 0 %}
+            {{ bar(c.mem_pct, 50, 12) }}
+            <span style="font-size:22px; margin-left:6px; font-variant-numeric:tabular-nums;">
+              {{ c.mem_mb }}/{{ c.mem_limit_mb }}MB
+            </span>
+            {% elif c.stats_ok %}
+            <span style="font-size:20px;">{{ c.mem_mb }}MB</span>
+            {% else %}
+            <span style="color:#ccc; font-size:24px;">—</span>
+            {% endif %}
+          </td>
+
+          {# Net I/O #}
+          <td style="padding:11px 8px; font-size:22px; white-space:nowrap;
+                     font-variant-numeric:tabular-nums;">
+            {% if c.stats_ok and c.net_rx != "—" %}
+            <span style="font-size:15px; color:#666;">&#8595;</span>&thinsp;{{ c.net_rx }}
+            <span style="color:#ccc; margin:0 3px;">/</span>
+            <span style="font-size:15px; color:#666;">&#8593;</span>&thinsp;{{ c.net_tx }}
+            {% else %}
+            <span style="color:#ccc;">—</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% endif %}
+
   </div>
-  {% endif %}
+  {# ══ end RIGHT PANEL ══════════════════════════════════════════════════════ #}
 
 </div>
 {% endblock %}

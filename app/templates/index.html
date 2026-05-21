@@ -1,27 +1,137 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Kindle Dashboard{% endblock %}
 
 {% block content %}
-<!-- Landscape: 1433×1232 content area — two big nav buttons centred -->
-<div style="
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 1232px;
-  gap: 50px;
-">
-  <h1 style="font-size:44px; letter-spacing:0.04em;">Kindle Dashboard</h1>
+{# Landscape content: 1648 × 1232 px — 4 nav cards in a 2×2 grid #}
+<div style="height:1232px; display:flex; flex-direction:column; overflow:hidden;">
 
-  <div style="display:flex; gap:60px;">
-    <a href="/weather" class="nav-btn" style="width:580px; height:220px; font-size:40px;">
-      &#9729; Weather
-    </a>
-    <a href="/docker" class="nav-btn" style="width:580px; height:220px; font-size:40px;">
-      &#9634; Docker
-    </a>
+  {# ── Header ───────────────────────────────────────────────────────────────── #}
+  <div style="
+    flex-shrink:0;
+    border-bottom:2px solid #000;
+    padding-bottom:12px;
+    margin-bottom:24px;
+  ">
+    <h1 style="font-size:42px; letter-spacing:0.03em; line-height:1;">Kindle Dashboard</h1>
+    <div style="font-size:17px; color:#666; margin-top:5px;">Milan, Italy</div>
   </div>
 
-  <p style="font-size:18px; color:#777;">Milan, Italy &nbsp;·&nbsp; {{ request.host }}</p>
+  {# ── 2 × 2 card grid — fills remaining height ─────────────────────────────── #}
+  <div style="
+    flex:1;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:32px;
+    min-height:0;
+  ">
+
+    {# ── Weather ──────────────────────────────────────────────────────────────── #}
+    <a href="{{ weather_url }}" style="
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      border:2px solid #000; border-radius:4px;
+      text-decoration:none; color:#000;
+    ">
+      {# Sun + cloud icon #}
+      <svg width="90" height="74" viewBox="0 0 110 90" style="display:block;">
+        <circle cx="42" cy="32" r="13" fill="none" stroke="#000" stroke-width="3"/>
+        <line x1="42" y1="4"  x2="42" y2="13" stroke="#000" stroke-width="3"/>
+        <line x1="42" y1="51" x2="42" y2="60" stroke="#000" stroke-width="3"/>
+        <line x1="14" y1="32" x2="23" y2="32" stroke="#000" stroke-width="3"/>
+        <line x1="61" y1="32" x2="70" y2="32" stroke="#000" stroke-width="3"/>
+        <line x1="23" y1="13" x2="29" y2="19" stroke="#000" stroke-width="3"/>
+        <line x1="55" y1="45" x2="61" y2="51" stroke="#000" stroke-width="3"/>
+        <line x1="61" y1="13" x2="55" y2="19" stroke="#000" stroke-width="3"/>
+        <line x1="23" y1="51" x2="29" y2="45" stroke="#000" stroke-width="3"/>
+        <path d="M38 75 Q28 75 28 65 Q28 58 34 56 Q33 42 46 40 Q56 38 60 48 Q66 46 70 52 Q76 52 76 60 Q76 68 68 70 Z"
+              fill="#fff" stroke="#000" stroke-width="3"/>
+      </svg>
+      <div style="text-align:center;">
+        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">Weather</div>
+        <div style="font-size:17px; color:#666; margin-top:5px;">Milan · Current &amp; Forecast</div>
+      </div>
+    </a>
+
+    {# ── Docker ───────────────────────────────────────────────────────────────── #}
+    <a href="{{ docker_url }}" style="
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      border:2px solid #000; border-radius:4px;
+      text-decoration:none; color:#000;
+    ">
+      {# Stacked boxes (container) icon #}
+      <svg width="90" height="74" viewBox="0 0 100 90" style="display:block;">
+        <rect x="10" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+        <rect x="38" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+        <rect x="66" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+        <rect x="24" y="28" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+        <rect x="52" y="28" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+        <rect x="38"  y="6" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+      </svg>
+      <div style="text-align:center;">
+        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">Docker</div>
+        <div style="font-size:17px; color:#666; margin-top:5px;">Container Resources</div>
+      </div>
+    </a>
+
+    {# ── UPS ──────────────────────────────────────────────────────────────────── #}
+    <a href="{{ ups_url }}" style="
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      border:2px solid #000; border-radius:4px;
+      text-decoration:none; color:#000;
+    ">
+      {# Lightning bolt / battery icon #}
+      <svg width="90" height="74" viewBox="0 0 90 74" style="display:block;">
+        {# Battery body #}
+        <rect x="6" y="16" width="68" height="42" rx="4" fill="none" stroke="#000" stroke-width="3"/>
+        <rect x="74" y="26" width="10" height="22" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+        {# Charge fill #}
+        <rect x="10" y="20" width="48" height="34" rx="2" fill="#000"/>
+        {# Lightning bolt overlay on fill #}
+        <polyline points="40,23 33,39 42,39 35,55"
+                  fill="none" stroke="#fff" stroke-width="3.5"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+      <div style="text-align:center;">
+        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">UPS</div>
+        <div style="font-size:17px; color:#666; margin-top:5px;">Power &amp; Battery Monitor</div>
+      </div>
+    </a>
+
+    {# ── ESP32 ────────────────────────────────────────────────────────────────── #}
+    <a href="{{ esp32_url }}" style="
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      border:2px solid #000; border-radius:4px;
+      text-decoration:none; color:#000;
+    ">
+      {# Chip / microcontroller icon #}
+      <svg width="90" height="74" viewBox="0 0 90 74" style="display:block;">
+        {# IC body #}
+        <rect x="22" y="12" width="46" height="50" rx="3" fill="none" stroke="#000" stroke-width="3"/>
+        {# Pins left #}
+        <line x1="6"  y1="22" x2="22" y2="22" stroke="#000" stroke-width="2.5"/>
+        <line x1="6"  y1="32" x2="22" y2="32" stroke="#000" stroke-width="2.5"/>
+        <line x1="6"  y1="42" x2="22" y2="42" stroke="#000" stroke-width="2.5"/>
+        <line x1="6"  y1="52" x2="22" y2="52" stroke="#000" stroke-width="2.5"/>
+        {# Pins right #}
+        <line x1="68" y1="22" x2="84" y2="22" stroke="#000" stroke-width="2.5"/>
+        <line x1="68" y1="32" x2="84" y2="32" stroke="#000" stroke-width="2.5"/>
+        <line x1="68" y1="42" x2="84" y2="42" stroke="#000" stroke-width="2.5"/>
+        <line x1="68" y1="52" x2="84" y2="52" stroke="#000" stroke-width="2.5"/>
+        {# Notch on top-left #}
+        <path d="M22 20 Q28 12 34 20" fill="none" stroke="#000" stroke-width="2"/>
+        {# Inner cross (circuit detail) #}
+        <rect x="30" y="26" width="30" height="22" rx="2" fill="none" stroke="#000" stroke-width="2"/>
+      </svg>
+      <div style="text-align:center;">
+        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">ESP32</div>
+        <div style="font-size:17px; color:#666; margin-top:5px;">Temp · Humidity · Pressure</div>
+      </div>
+    </a>
+
+  </div>
 </div>
 {% endblock %}

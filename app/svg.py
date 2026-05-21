@@ -361,6 +361,73 @@ def line_graph(
 
 
 # ---------------------------------------------------------------------------
+# Docker horizontal bar chart
+# ---------------------------------------------------------------------------
+
+def docker_bar_chart(
+    items: list[tuple[str, float]],  # (name, value) already sorted descending
+    max_val: float,
+    width: int,
+    height: int,
+    unit: str = "%",
+) -> str:
+    """
+    Horizontal bar chart for per-container CPU% or memory%.
+    max_val is the denominator (pass the top value for CPU, 100 for memory%).
+    """
+    if not items:
+        return _empty_svg(width, height, "No running containers")
+
+    n = len(items)
+    label_w = 160   # name label column — wider for bigger text
+    value_w = 80    # value text at right — wider for bigger text
+    bar_area = width - label_w - value_w   # narrower bar track (frees space for text)
+
+    row_h = height // n
+    bar_h = min(20, max(10, int(row_h * 0.36)))
+
+    safe_max = max_val if max_val > 0 else 1.0
+
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+        f'width="{width}" height="{height}">'
+    ]
+
+    for i, (name, val) in enumerate(items):
+        cy   = i * row_h + row_h // 2
+        bar_y = cy - bar_h // 2
+        fill_px = int(bar_area * min(val, safe_max) / safe_max)
+        fill_px = max(0, min(bar_area, fill_px))
+
+        display = (name[:14] + "…") if len(name) > 15 else name
+
+        # Alternating row tint
+        if i % 2 == 0:
+            parts.append(
+                f'<rect x="0" y="{i * row_h}" width="{width}" height="{row_h}" '
+                f'fill="#f7f7f7"/>'
+            )
+
+        parts += [
+            # Name label — right-aligned in the label column
+            f'<text x="{label_w - 8}" y="{cy + 7}" text-anchor="end" '
+            f'font-family="Georgia,serif" font-size="20" fill="#000">{display}</text>',
+            # Background track
+            f'<rect x="{label_w}" y="{bar_y}" width="{bar_area}" height="{bar_h}" '
+            f'fill="none" stroke="#ccc" stroke-width="1"/>',
+            # Fill bar (solid black)
+            f'<rect x="{label_w}" y="{bar_y}" width="{fill_px}" height="{bar_h}" fill="#000"/>',
+            # Value label — right of the bar
+            f'<text x="{label_w + bar_area + 7}" y="{cy + 7}" '
+            f'font-family="Georgia,serif" font-size="20" fill="#000">'
+            f'{val:.1f}{unit}</text>',
+        ]
+
+    parts.append('</svg>')
+    return ''.join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
