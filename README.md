@@ -5,8 +5,17 @@ Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px
 
 ## Screenshots
 
-### Weather 
+### Dashboard
+![dashboard](.media/dashboard.jpeg)
+
+### Docker containers monitor
+![docker](.media/docker_dashboard.jpeg)
+
+### Weather
 ![weather](.media/weather_dashboard.jpeg)
+
+### UPS monitor 
+![weather](.media/UPS_dashboard.jpeg)
 
 ## Requirements
 
@@ -16,7 +25,7 @@ Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px
 - Docker daemon running locally (optional — /docker page degrades gracefully)
 
 ### Kindle
-- **Jailbroken Kindle Oasis 3 (10th gen)** — a stock Kindle cannot run arbitrary browser apps
+- **Jailbroken Kindle** — a stock Kindle cannot run arbitrary browser apps
   - Follow the [MobileRead guide](https://www.mobileread.com/forums/showthread.php?t=320564) for your firmware version. Also, [this video](https://www.youtube.com/watch?v=l4ZliC82RtA)
 - **KUAL** (Kindle Unified Application Launcher) installed post-jailbreak 
 - **Shortcut Browser** launches a full-screen Chromium instance pointed at a URL. [Link](https://github.com/mitchellurgero/kindle-shortcut-browser)

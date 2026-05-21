@@ -15,5 +15,12 @@
   <div class="page">
     {% block content %}{% endblock %}
   </div>
+  <script>
+    setInterval(function(){
+      fetch('/reload-signal').then(function(r){return r.json();}).then(function(d){
+        if(d.reload) location.reload();
+      }).catch(function(){});
+    }, 2000);
+  </script>
 </body>
 </html>

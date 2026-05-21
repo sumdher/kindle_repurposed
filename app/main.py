@@ -25,7 +25,7 @@ import pytz
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -42,6 +42,12 @@ from app.weather import (
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+class _SuppressReloadSignal(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/reload-signal" not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(_SuppressReloadSignal())
 
 ROME_TZ  = pytz.timezone("Europe/Rome")
 PORT      = 8080   # container-internal port
@@ -94,6 +100,9 @@ AUX_GRAPH_H = 374
 _weather_cache: dict = {
     "current": None, "daily": None, "hourly": [], "stale": False,
 }
+
+# Remote reload flag — set via GET /set-reload, consumed by GET /reload-signal
+_reload_flag: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +203,20 @@ async def no_cache_headers(request: Request, call_next):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@app.get("/reload-signal")
+async def reload_signal():
+    global _reload_flag
+    flag, _reload_flag = _reload_flag, False
+    return JSONResponse({"reload": flag})
+
+
+@app.get("/set-reload")
+async def set_reload():
+    global _reload_flag
+    _reload_flag = True
+    return JSONResponse({"ok": True})
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
