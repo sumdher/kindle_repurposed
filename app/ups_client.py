@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import socket
-from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -63,9 +62,6 @@ class UpsReading:
     firmware: str
     updated_at: datetime
 
-
-# Rolling 48h store: 5-min samples × 576 = 48h
-ups_store: deque[UpsSample] = deque(maxlen=576)
 
 # Last successful reading (survives transient NUT failures)
 _ups_cache: dict = {"reading": None, "stale": False}

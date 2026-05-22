@@ -152,6 +152,37 @@
 
     </div>
 
+    <div style="border-top:1px solid #ddd; margin-bottom:12px; flex-shrink:0;"></div>
+
+    {# Average load stats #}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; flex-shrink:0; margin-bottom:14px;">
+
+      <div class="box" style="padding:12px 14px; display:flex; flex-direction:column; gap:5px;">
+        <span style="font-size:16px; text-transform:uppercase; letter-spacing:0.07em; color:#555; font-weight:bold;">Avg Load 24h</span>
+        {% if avg_load_24h is not none %}
+        <span style="font-size:48px; font-weight:bold; line-height:1; letter-spacing:-2px;">{{ "%.0f"|format(avg_watts_24h) }}<span style="font-size:24px; font-weight:normal; letter-spacing:0;"> W</span></span>
+        <span style="font-size:26px; font-weight:bold; color:#555;">{{ "%.0f"|format(avg_load_24h) }}<span style="font-size:18px; font-weight:normal;">%</span></span>
+        <span style="font-size:14px; color:#999;">{{ n_samples_24h }} pts</span>
+        {% else %}
+        <span style="font-size:20px; color:#bbb;">—</span>
+        <span style="font-size:14px; color:#bbb;">accumulating…</span>
+        {% endif %}
+      </div>
+
+      <div class="box" style="padding:12px 14px; display:flex; flex-direction:column; gap:5px;">
+        <span style="font-size:16px; text-transform:uppercase; letter-spacing:0.07em; color:#555; font-weight:bold;">Avg Load 7d</span>
+        {% if avg_load_7d is not none %}
+        <span style="font-size:48px; font-weight:bold; line-height:1; letter-spacing:-2px;">{{ "%.0f"|format(avg_watts_7d) }}<span style="font-size:24px; font-weight:normal; letter-spacing:0;"> W</span></span>
+        <span style="font-size:26px; font-weight:bold; color:#555;">{{ "%.0f"|format(avg_load_7d) }}<span style="font-size:18px; font-weight:normal;">%</span></span>
+        <span style="font-size:14px; color:#999;">{{ n_samples_7d }} pts</span>
+        {% else %}
+        <span style="font-size:20px; color:#bbb;">—</span>
+        <span style="font-size:14px; color:#bbb;">accumulating…</span>
+        {% endif %}
+      </div>
+
+    </div>
+
     {# Refresh selector — label above, boxes below #}
     <div style="margin-top:14px; flex-shrink:0;">
       <div style="font-size:16px; color:#666; text-transform:uppercase;
@@ -182,27 +213,24 @@
   </div>
   {# ══ end LEFT PANEL ════════════════════════════════════════════════════════ #}
 
-  {# ══ RIGHT PANEL — 3 stacked 48h history graphs ════════════════════════════ #}
+  {# ══ RIGHT PANEL — 3 stacked history graphs ══════════════════════════════ #}
   <div style="flex:1; height:1232px; display:flex; flex-direction:column; overflow:hidden;">
 
-    {% if not samples %}
+    {% if not has_data %}
     <div style="flex:1; display:flex; align-items:center; justify-content:center;">
       <p style="font-size:24px; color:#bbb;">No history yet — data accumulates every 5 minutes.</p>
     </div>
 
     {% else %}
 
-    <div class="section-title" style="margin-bottom:5px;">Load %</div>
     <div style="height:374px; flex-shrink:0; margin-bottom:10px;">
       {{ load_svg | safe }}
     </div>
 
-    <div class="section-title" style="margin-bottom:5px;">Input Voltage</div>
     <div style="height:374px; flex-shrink:0; margin-bottom:10px;">
       {{ voltage_svg | safe }}
     </div>
 
-    <div class="section-title" style="margin-bottom:5px;">Battery Charge %</div>
     <div style="flex:1; overflow:hidden;">
       {{ battery_svg | safe }}
     </div>

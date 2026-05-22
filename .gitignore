@@ -4,5 +4,7 @@ CLAUDE.md
 
 .venv
 __pycache__
+data
+.data
 
 docker-compose.yml

@@ -150,12 +150,14 @@ async def fetch_current_and_hourly() -> tuple[
 
 async def fetch_historical_samples() -> list[tuple[datetime, float, float]]:
     """Return 48h of hourly (timestamp, pressure_hpa, wind_speed_kmh) for backfill."""
+    # forecast_days=0 is no longer accepted by Open-Meteo; omit it (defaults to 1).
+    # We filter out future timestamps in the caller so the extra forecast hour doesn't matter.
     params = {
         "latitude": LAT,
         "longitude": LON,
         "hourly": "surface_pressure,wind_speed_10m",
         "past_days": 2,
-        "forecast_days": 0,
+        "forecast_days": 1,
         "timezone": "Europe/Rome",
     }
     try:

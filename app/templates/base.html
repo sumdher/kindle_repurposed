@@ -2,25 +2,66 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  {#
+    Viewport and CSS rotation depend on display mode:
+      landscape  — Kindle in landscape via -90° CSS rotation (default)
+      portrait   — Kindle in native portrait, no rotation
+      web        — Any normal display, fully responsive
+  #}
+  {% set _mode = mode | default('landscape') %}
+  {% if _mode == 'web' %}
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% else %}
   <meta name="viewport" content="width=1264, initial-scale=1.0, user-scalable=no">
+  {% endif %}
   <title>{% block title %}Kindle Dashboard{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  {% if _mode == 'portrait' %}
+  <style>
+    /* Portrait: no rotation — Kindle native orientation 1264×1465 viewport */
+    html, body { width: 1264px; height: 1680px; overflow: hidden; }
+    .page {
+      transform: none !important;
+      position: absolute; top: 0; left: 0;
+      width: 1264px; height: 1465px;
+      overflow: hidden;
+      padding: 16px;
+    }
+  </style>
+  {% elif _mode == 'web' %}
+  <style>
+    /* Web: no rotation, scrollable. Sub-pages keep their 1648px landscape layout
+       and scroll horizontally on small screens. Index uses its own responsive grid. */
+    html, body { width: auto; height: auto; overflow: auto; }
+    .page {
+      transform: none !important;
+      position: static;
+      width: max-content; min-width: 100%;
+      height: auto; min-height: 100vh;
+      overflow: visible;
+      padding: 16px;
+    }
+  </style>
+  {% endif %}
   {% block head_extra %}{% endblock %}
 </head>
 <body>
-  <!--
-    .page is 1680×1264px (landscape) rotated -90° into the 1264×1680 portrait
-    viewport. Power button to the right = content appears landscape.
-  -->
   <div class="page">
     {% block content %}{% endblock %}
   </div>
   <script>
-    setInterval(function(){
-      fetch('/reload-signal').then(function(r){return r.json();}).then(function(d){
-        if(d.reload) location.reload();
-      }).catch(function(){});
-    }, 2000);
+    // Long-press anywhere for 600ms → reload (Kindle tap UX).
+    function doReload(){
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-size:48px;font-family:Georgia,serif;z-index:9999;';
+      ov.textContent = 'RELOADING…';
+      document.body.appendChild(ov);
+      setTimeout(function(){ location.reload(); }, 500);
+    }
+    var _lpt = null;
+    document.addEventListener('touchstart', function(){ _lpt = setTimeout(doReload, 600); }, false);
+    document.addEventListener('touchend',   function(){ clearTimeout(_lpt); }, false);
+    document.addEventListener('touchmove',  function(){ clearTimeout(_lpt); }, false);
   </script>
 </body>
 </html>

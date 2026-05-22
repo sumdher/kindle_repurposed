@@ -19,22 +19,24 @@ import logging
 import os
 import socket
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytz
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app import db
 from app.docker_client import get_containers
 from app.esp32_client import fetch_latest as fetch_esp32_latest
 from app.esp32_client import fetch_history as fetch_esp32_history
 from app.store import WeatherSample, store
 from app.svg import docker_bar_chart, hourly_chart, line_graph, weather_icon_svg, wmo_icon_key
-from app.ups_client import UpsSample, _ups_cache, get_ups_reading, ups_store
+from app.sys_client import get_sys_stats
+from app.ups_client import UpsSample, _ups_cache, get_ups_reading
 from app.weather import (
     fetch_current_and_hourly, fetch_historical_samples,
     wind_direction_text, wmo_label,
@@ -66,6 +68,7 @@ WEATHER_URL  = os.environ.get("WEATHER_URL",  "/weather")
 DOCKER_URL   = os.environ.get("DOCKER_URL",   "/docker")
 UPS_URL      = os.environ.get("UPS_URL",      "/ups")
 ESP32_URL    = os.environ.get("ESP32_URL",    "/esp32")
+SYS_URL      = os.environ.get("SYS_URL",      "/sys")
 
 # NUT (UPS) settings
 NUT_HOST     = os.environ.get("NUT_HOST",  "127.0.0.1")
@@ -101,8 +104,6 @@ _weather_cache: dict = {
     "current": None, "daily": None, "hourly": [], "stale": False,
 }
 
-# Remote reload flag — set via GET /set-reload, consumed by GET /reload-signal
-_reload_flag: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +130,10 @@ async def _collect_weather() -> None:
 
 async def _backfill() -> None:
     historical = await fetch_historical_samples()
-    two_hourly = [s for s in historical if s[0].hour % 2 == 0]
+    now = datetime.now(ROME_TZ)
+    # Keep only past timestamps (fetch may include 1 day of forecast due to API minimum)
+    past = [s for s in historical if s[0] <= now]
+    two_hourly = [s for s in past if s[0].hour % 2 == 0]
     for ts, pressure, wind in two_hourly[-24:]:
         store.append(WeatherSample(timestamp=ts, pressure_hpa=pressure, wind_speed_kmh=wind))
     logger.info("Weather backfill: %d samples", len(store.get_all()))
@@ -140,13 +144,11 @@ async def _collect_ups() -> None:
         get_ups_reading, NUT_HOST, NUT_PORT, UPS_NAME_CFG
     )
     if reading is not None:
-        ups_store.append(UpsSample(
-            timestamp=reading.updated_at,
-            load_pct=reading.load_pct,
-            watts=reading.watts,
-            input_voltage=reading.input_voltage,
-            battery_charge=reading.battery_charge,
-        ))
+        await asyncio.to_thread(
+            db.ups_insert,
+            reading.updated_at, reading.load_pct, reading.watts,
+            reading.input_voltage, reading.battery_charge,
+        )
         _ups_cache.update({"reading": reading, "stale": False})
         logger.info("UPS: %s load=%d%% bat=%d%%",
                     reading.status, reading.load_pct, reading.battery_charge)
@@ -164,10 +166,22 @@ scheduler = AsyncIOScheduler(timezone=ROME_TZ)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if SERVICE in ("all", "ups", "weather", "docker", "esp32", "sys"):
+        await asyncio.to_thread(db.init_db)
+
     if SERVICE in ("all", "weather"):
         await _backfill()
         await _collect_weather()
         scheduler.add_job(_collect_weather, "interval", hours=2, id="weather")
+        # If the Open-Meteo API was unreachable at startup, both calls above may have
+        # produced an empty store. Schedule a one-shot backfill retry in 5 minutes so
+        # the graphs aren't blank for the full 2-hour collection interval.
+        if not store.get_all():
+            scheduler.add_job(
+                _backfill, "date",
+                run_date=datetime.now(ROME_TZ) + timedelta(minutes=5),
+                id="weather_backfill_retry",
+            )
 
     if SERVICE in ("all", "ups"):
         await _collect_ups()
@@ -201,36 +215,42 @@ async def no_cache_headers(request: Request, call_next):
 
 
 # ---------------------------------------------------------------------------
+# Utilities for display mode
+# ---------------------------------------------------------------------------
+
+def _sanitize_mode(mode: str) -> str:
+    return mode if mode in ("landscape", "portrait", "web") else "landscape"
+
+
+def _back_url(mode: str) -> str:
+    """Return the landing URL, with ?mode= appended for non-landscape modes."""
+    if mode == "landscape":
+        return LANDING_URL
+    return f"{LANDING_URL}?mode={mode}"
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
-@app.get("/reload-signal")
-async def reload_signal():
-    global _reload_flag
-    flag, _reload_flag = _reload_flag, False
-    return JSONResponse({"reload": flag})
-
-
-@app.get("/set-reload")
-async def set_reload():
-    global _reload_flag
-    _reload_flag = True
-    return JSONResponse({"ok": True})
-
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, mode: str = "landscape"):
+    mode = _sanitize_mode(mode)
     ctx = {
         "weather_url": WEATHER_URL,
         "docker_url":  DOCKER_URL,
         "ups_url":     UPS_URL,
         "esp32_url":   ESP32_URL,
+        "sys_url":     SYS_URL,
+        "mode":        mode,
     }
     return templates.TemplateResponse(request, "index.html", ctx)
 
 
 @app.get("/weather", response_class=HTMLResponse)
-async def weather_page(request: Request):
+async def weather_page(request: Request, mode: str = "landscape"):
+    mode = _sanitize_mode(mode)
     current, daily, hourly = await fetch_current_and_hourly()
     if current is None:
         current = _weather_cache.get("current")
@@ -243,7 +263,17 @@ async def weather_page(request: Request):
         })
         stale = False
 
-    samples      = store.get_all()
+    samples = store.get_all()
+    # If the background backfill failed at startup, seed the store with the current
+    # reading so the graphs always have at least one data point.
+    if not samples and current is not None:
+        store.append(WeatherSample(
+            timestamp=current.updated_at,
+            pressure_hpa=current.pressure,
+            wind_speed_kmh=current.wind_speed,
+        ))
+        samples = store.get_all()
+
     pressure_svg = line_graph(samples, "pressure_hpa", GRAPH_W, GRAPH_H,
                               "Atmospheric Pressure (48h)", "hPa")
     wind_svg     = line_graph(samples, "wind_speed_kmh", GRAPH_W, GRAPH_H,
@@ -262,13 +292,15 @@ async def weather_page(request: Request):
         "hourly_svg":      hourly_svg,
         "now":             datetime.now(ROME_TZ).strftime("%H:%M, %d %b %Y"),
         "today_date":      datetime.now(ROME_TZ).strftime("%A, %d %B %Y"),
-        "back_url":        LANDING_URL,
+        "back_url":        _back_url(mode),
+        "mode":            mode,
     }
     return templates.TemplateResponse(request, "weather.html", ctx)
 
 
 @app.get("/docker", response_class=HTMLResponse)
-async def docker_page(request: Request, refresh: int = 15):
+async def docker_page(request: Request, refresh: int = 15, mode: str = "landscape"):
+    mode = _sanitize_mode(mode)
     containers, error = await asyncio.to_thread(get_containers)
     refresh_secs  = max(5, min(refresh, 900))
     running_count = sum(1 for c in containers if c.status == "running")
@@ -292,58 +324,107 @@ async def docker_page(request: Request, refresh: int = 15):
         "stopped_count": len(containers) - running_count,
         "cpu_chart":     cpu_chart,
         "mem_chart":     mem_chart,
-        "back_url":      LANDING_URL,
+        "back_url":      _back_url(mode),
+        "mode":          mode,
     }
     return templates.TemplateResponse(request, "docker.html", ctx)
 
 
 @app.get("/ups", response_class=HTMLResponse)
-async def ups_page(request: Request, refresh: int = 30):
-    # Always try a live poll; fall back to cache if NUT is unreachable.
+async def ups_page(request: Request, refresh: int = 30, range: int = 24, mode: str = "landscape"):
+    mode = _sanitize_mode(mode)
+    # Live poll on every page request; fall back to cache if NUT is unreachable.
     reading = await asyncio.to_thread(
         get_ups_reading, NUT_HOST, NUT_PORT, UPS_NAME_CFG
     )
     if reading is not None:
         _ups_cache.update({"reading": reading, "stale": False})
         stale = False
-        # Append to store on page load, but at most once per minute, so graphs
-        # update on every visible refresh without flooding the 48h deque.
-        if not ups_store or (reading.updated_at - ups_store[-1].timestamp).total_seconds() >= 60:
-            ups_store.append(UpsSample(
-                timestamp=reading.updated_at,
-                load_pct=reading.load_pct,
-                watts=reading.watts,
-                input_voltage=reading.input_voltage,
-                battery_charge=reading.battery_charge,
-            ))
+        # Write to SQLite at most once per minute (page refreshes every 30s by default)
+        last_ts = await asyncio.to_thread(db.ups_last_ts)
+        if last_ts is None or (reading.updated_at - last_ts).total_seconds() >= 60:
+            await asyncio.to_thread(
+                db.ups_insert,
+                reading.updated_at, reading.load_pct, reading.watts,
+                reading.input_voltage, reading.battery_charge,
+            )
     else:
         reading = _ups_cache.get("reading")
         stale   = True
 
-    samples = list(ups_store)
+    range_h = 24
+
+    # Query SQLite — returns dicts with "ts", "load_pct", "watts", etc.
+    rows = await asyncio.to_thread(db.ups_query, range_h)
+
+    # Convert to UpsSample objects so line_graph's getattr() calls work
+    graph_samples = [
+        UpsSample(
+            timestamp=r["ts"].astimezone(ROME_TZ),
+            load_pct=r["load_pct"],
+            watts=r["watts"],
+            input_voltage=r["input_voltage"],
+            battery_charge=r["battery_charge"],
+        )
+        for r in rows
+    ]
+
+    label = "7d" if range_h == 168 else "24h"
+    x_fmt = "%d/%m %Hh" if range_h >= 48 else "%H:%M"
 
     def _svg(attr: str, title: str, unit: str) -> str:
-        return line_graph(samples, attr, AUX_GRAPH_W, AUX_GRAPH_H, title, unit) if samples else ""
+        return line_graph(graph_samples, attr, AUX_GRAPH_W, AUX_GRAPH_H,
+                          f"{title} ({label})", unit, x_fmt=x_fmt) \
+               if graph_samples else ""
+
+    # Averages straight from SQLite aggregates (no Python iteration needed)
+    avg_load_24h, avg_watts_24h, n_samples_24h = await asyncio.to_thread(db.ups_averages, 24)
+    avg_load_7d,  avg_watts_7d,  n_samples_7d  = await asyncio.to_thread(db.ups_averages, 168)
 
     refresh_secs = max(10, min(refresh, 900))
     ctx = {
-        "reading":      reading,
-        "stale":        stale,
-        "nut_host":     NUT_HOST,
-        "nut_port":     NUT_PORT,
-        "load_svg":     _svg("load_pct",       "Load %",           "%"),
-        "voltage_svg":  _svg("input_voltage",  "Input Voltage",    "V"),
-        "battery_svg":  _svg("battery_charge", "Battery Charge",   "%"),
-        "refresh_secs": refresh_secs,
-        "now":          datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
-        "back_url":     LANDING_URL,
-        "samples":      samples,
+        "reading":        reading,
+        "stale":          stale,
+        "nut_host":       NUT_HOST,
+        "nut_port":       NUT_PORT,
+        "load_svg":       _svg("load_pct",       "Load %",       "%"),
+        "voltage_svg":    _svg("input_voltage",  "Input Voltage", "V"),
+        "battery_svg":    _svg("battery_charge", "Battery %",    "%"),
+        "refresh_secs":   refresh_secs,
+        "range_h":        range_h,
+        "now":            datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
+        "back_url":       _back_url(mode),
+        "mode":           mode,
+        "has_data":       bool(graph_samples),
+        # Average stats
+        "avg_load_24h":   avg_load_24h,
+        "avg_watts_24h":  avg_watts_24h,
+        "n_samples_24h":  n_samples_24h,
+        "avg_load_7d":    avg_load_7d,
+        "avg_watts_7d":   avg_watts_7d,
+        "n_samples_7d":   n_samples_7d,
     }
     return templates.TemplateResponse(request, "ups.html", ctx)
 
 
+@app.get("/sys", response_class=HTMLResponse)
+async def sys_page(request: Request, refresh: int = 5, mode: str = "landscape"):
+    mode = _sanitize_mode(mode)
+    stats = await asyncio.to_thread(get_sys_stats)
+    refresh_secs = max(3, min(refresh, 300))
+    ctx = {
+        "stats":        stats,
+        "refresh_secs": refresh_secs,
+        "now":          datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
+        "back_url":     _back_url(mode),
+        "mode":         mode,
+    }
+    return templates.TemplateResponse(request, "sys.html", ctx)
+
+
 @app.get("/esp32", response_class=HTMLResponse)
-async def esp32_page(request: Request, refresh: int = 60):
+async def esp32_page(request: Request, refresh: int = 60, mode: str = "landscape"):
+    mode = _sanitize_mode(mode)
     reading = None
     history  = []
     error    = None
@@ -372,7 +453,8 @@ async def esp32_page(request: Request, refresh: int = 60):
         "press_svg":    _svg("pressure",    "Pressure",       "hPa"),
         "refresh_secs": refresh_secs,
         "now":          datetime.now(ROME_TZ).strftime("%H:%M:%S, %d %b %Y"),
-        "back_url":     LANDING_URL,
+        "back_url":     _back_url(mode),
+        "mode":         mode,
         "history":      history,
     }
     return templates.TemplateResponse(request, "esp32.html", ctx)

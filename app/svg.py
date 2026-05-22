@@ -241,6 +241,7 @@ def line_graph(
     height: int,
     title: str,
     y_unit: str,
+    x_fmt: str = "%H:%M",
 ) -> str:
     """
     SVG line graph: labeled axes, dashed grid, bold data line, latest value annotated.
@@ -310,7 +311,7 @@ def line_graph(
     tick_step = max(1, math.ceil(n / 8))
     for i in range(0, n, tick_step):
         x = px(i)
-        label = times[i].strftime("%H:%M")
+        label = times[i].strftime(x_fmt)
         parts.append(
             f'<line x1="{x:.1f}" y1="{mt + gh}" x2="{x:.1f}" y2="{mt + gh + 5}" '
             f'stroke="#333" stroke-width="1.5"/>'

@@ -1,137 +1,271 @@
 {% extends "base.html" %}
 {% block title %}Kindle Dashboard{% endblock %}
 
+{#
+  Three display modes — selected via ?mode= URL param:
+    landscape  Kindle landscape (CSS-rotated, 1648×1232 content)  [default]
+    portrait   Kindle native portrait (1232×1433 content)
+    web        Any normal screen — fully responsive, scrollable
+#}
+
+{# ── Reusable card macro ─────────────────────────────────────────────────── #}
+{# Append ?mode= to every destination URL so mode persists across navigation. #}
+{% macro nav_card(href, label, subtitle, icon_svg, extra_style='') %}
+<a href="{{ href }}{% if mode != 'landscape' %}?mode={{ mode }}{% endif %}" style="
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:16px;
+  border:2px solid #000; border-radius:4px;
+  text-decoration:none; color:#000;
+  {{ extra_style }}
+">
+  {{ icon_svg | safe }}
+  <div style="text-align:center;">
+    <div style="font-size:{% if mode == 'web' %}28px{% else %}36px{% endif %}; font-weight:bold; letter-spacing:0.03em;">{{ label }}</div>
+    <div style="font-size:{% if mode == 'web' %}14px{% else %}16px{% endif %}; color:#666; margin-top:4px;">{{ subtitle }}</div>
+  </div>
+</a>
+{% endmacro %}
+
+{# ── SVG icons ───────────────────────────────────────────────────────────── #}
+{% set icon_weather %}
+<svg width="80" height="66" viewBox="0 0 110 90" style="display:block;">
+  <circle cx="42" cy="32" r="13" fill="none" stroke="#000" stroke-width="3"/>
+  <line x1="42" y1="4"  x2="42" y2="13" stroke="#000" stroke-width="3"/>
+  <line x1="42" y1="51" x2="42" y2="60" stroke="#000" stroke-width="3"/>
+  <line x1="14" y1="32" x2="23" y2="32" stroke="#000" stroke-width="3"/>
+  <line x1="61" y1="32" x2="70" y2="32" stroke="#000" stroke-width="3"/>
+  <line x1="23" y1="13" x2="29" y2="19" stroke="#000" stroke-width="3"/>
+  <line x1="55" y1="45" x2="61" y2="51" stroke="#000" stroke-width="3"/>
+  <line x1="61" y1="13" x2="55" y2="19" stroke="#000" stroke-width="3"/>
+  <line x1="23" y1="51" x2="29" y2="45" stroke="#000" stroke-width="3"/>
+  <path d="M38 75 Q28 75 28 65 Q28 58 34 56 Q33 42 46 40 Q56 38 60 48 Q66 46 70 52 Q76 52 76 60 Q76 68 68 70 Z"
+        fill="#fff" stroke="#000" stroke-width="3"/>
+</svg>
+{% endset %}
+
+{% set icon_docker %}
+<svg width="80" height="66" viewBox="0 0 100 90" style="display:block;">
+  <rect x="10" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+  <rect x="38" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+  <rect x="66" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+  <rect x="24" y="28" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+  <rect x="52" y="28" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+  <rect x="38"  y="6" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+</svg>
+{% endset %}
+
+{% set icon_ups %}
+<svg width="80" height="66" viewBox="0 0 90 74" style="display:block;">
+  <rect x="6" y="16" width="68" height="42" rx="4" fill="none" stroke="#000" stroke-width="3"/>
+  <rect x="74" y="26" width="10" height="22" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
+  <rect x="10" y="20" width="48" height="34" rx="2" fill="#000"/>
+  <polyline points="40,23 33,39 42,39 35,55"
+            fill="none" stroke="#fff" stroke-width="3.5"
+            stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
+{% endset %}
+
+{% set icon_esp32 %}
+<svg width="80" height="66" viewBox="0 0 90 74" style="display:block;">
+  <rect x="22" y="12" width="46" height="50" rx="3" fill="none" stroke="#000" stroke-width="3"/>
+  <line x1="6"  y1="22" x2="22" y2="22" stroke="#000" stroke-width="2.5"/>
+  <line x1="6"  y1="32" x2="22" y2="32" stroke="#000" stroke-width="2.5"/>
+  <line x1="6"  y1="42" x2="22" y2="42" stroke="#000" stroke-width="2.5"/>
+  <line x1="6"  y1="52" x2="22" y2="52" stroke="#000" stroke-width="2.5"/>
+  <line x1="68" y1="22" x2="84" y2="22" stroke="#000" stroke-width="2.5"/>
+  <line x1="68" y1="32" x2="84" y2="32" stroke="#000" stroke-width="2.5"/>
+  <line x1="68" y1="42" x2="84" y2="42" stroke="#000" stroke-width="2.5"/>
+  <line x1="68" y1="52" x2="84" y2="52" stroke="#000" stroke-width="2.5"/>
+  <path d="M22 20 Q28 12 34 20" fill="none" stroke="#000" stroke-width="2"/>
+  <rect x="30" y="26" width="30" height="22" rx="2" fill="none" stroke="#000" stroke-width="2"/>
+</svg>
+{% endset %}
+
+{% set icon_sys %}
+<svg width="80" height="66" viewBox="0 0 100 80" style="display:block;">
+  <rect x="28" y="20" width="44" height="40" rx="3" fill="none" stroke="#000" stroke-width="3"/>
+  <line x1="28" y1="33" x2="72" y2="33" stroke="#000" stroke-width="1.5"/>
+  <line x1="28" y1="47" x2="72" y2="47" stroke="#000" stroke-width="1.5"/>
+  <line x1="43" y1="20" x2="43" y2="60" stroke="#000" stroke-width="1.5"/>
+  <line x1="57" y1="20" x2="57" y2="60" stroke="#000" stroke-width="1.5"/>
+  <line x1="38" y1="12" x2="38" y2="20" stroke="#000" stroke-width="2.5"/>
+  <line x1="50" y1="12" x2="50" y2="20" stroke="#000" stroke-width="2.5"/>
+  <line x1="62" y1="12" x2="62" y2="20" stroke="#000" stroke-width="2.5"/>
+  <line x1="38" y1="60" x2="38" y2="68" stroke="#000" stroke-width="2.5"/>
+  <line x1="50" y1="60" x2="50" y2="68" stroke="#000" stroke-width="2.5"/>
+  <line x1="62" y1="60" x2="62" y2="68" stroke="#000" stroke-width="2.5"/>
+  <line x1="20" y1="30" x2="28" y2="30" stroke="#000" stroke-width="2.5"/>
+  <line x1="20" y1="40" x2="28" y2="40" stroke="#000" stroke-width="2.5"/>
+  <line x1="20" y1="50" x2="28" y2="50" stroke="#000" stroke-width="2.5"/>
+  <line x1="72" y1="30" x2="80" y2="30" stroke="#000" stroke-width="2.5"/>
+  <line x1="72" y1="40" x2="80" y2="40" stroke="#000" stroke-width="2.5"/>
+  <line x1="72" y1="50" x2="80" y2="50" stroke="#000" stroke-width="2.5"/>
+</svg>
+{% endset %}
+
+{# ── Mode toggle strip — shared across all modes ─────────────────────────── #}
+{% macro mode_toggle() %}
+<div style="
+  display:flex; align-items:center; gap:10px; flex-shrink:0;
+  {% if mode != 'web' %}margin-bottom:16px;{% else %}margin-bottom:20px;{% endif %}
+">
+  <span style="font-size:{% if mode == 'web' %}14px{% else %}16px{% endif %}; color:#888; text-transform:uppercase; letter-spacing:0.07em;">View</span>
+  {% for m, label in [('landscape', 'Landscape'), ('portrait', 'Portrait'), ('web', 'Web')] %}
+  <a href="?mode={{ m }}" style="
+    display:inline-block;
+    padding:{% if mode == 'web' %}6px 14px{% else %}8px 20px{% endif %};
+    border:2px solid #000; border-radius:4px;
+    text-decoration:none;
+    font-size:{% if mode == 'web' %}15px{% else %}18px{% endif %};
+    font-weight:bold;
+    {% if mode == m %}background:#000; color:#fff;{% else %}background:#fff; color:#000;{% endif %}
+  ">{{ label }}</a>
+  {% endfor %}
+</div>
+{% endmacro %}
+
 {% block content %}
-{# Landscape content: 1648 × 1232 px — 4 nav cards in a 2×2 grid #}
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   LANDSCAPE MODE  —  1648×1232 content (CSS-rotated into Kindle portrait)
+   3×2 grid: 5 nav cards + 1 mode-toggle card
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% if mode == 'landscape' %}
 <div style="height:1232px; display:flex; flex-direction:column; overflow:hidden;">
 
-  {# ── Header ───────────────────────────────────────────────────────────────── #}
-  <div style="
-    flex-shrink:0;
-    border-bottom:2px solid #000;
-    padding-bottom:12px;
-    margin-bottom:24px;
-  ">
-    <h1 style="font-size:42px; letter-spacing:0.03em; line-height:1;">Kindle Dashboard</h1>
-    <div style="font-size:17px; color:#666; margin-top:5px;">Milan, Italy</div>
+  <div style="flex-shrink:0; border-bottom:2px solid #000; padding-bottom:12px; margin-bottom:16px;">
+    <h1 style="font-size:40px; letter-spacing:0.03em; line-height:1;">Kindle Dashboard</h1>
+    <div style="font-size:16px; color:#666; margin-top:4px;">Milan, Italy</div>
   </div>
 
-  {# ── 2 × 2 card grid — fills remaining height ─────────────────────────────── #}
+  {{ mode_toggle() }}
+
   <div style="
-    flex:1;
+    flex:1; min-height:0;
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:20px;
+  ">
+    {{ nav_card(weather_url, 'Weather', 'Milan · Current &amp; Forecast', icon_weather) }}
+    {{ nav_card(docker_url,  'Docker',  'Container Resources',            icon_docker) }}
+    {{ nav_card(ups_url,     'UPS',     'Power &amp; Battery Monitor',    icon_ups) }}
+    {{ nav_card(esp32_url,   'ESP32',   'Temp · Humidity · Pressure',     icon_esp32) }}
+    {{ nav_card(sys_url,     'System',  'CPU · Memory · Processes',       icon_sys) }}
+    {# 6th cell intentionally empty #}
+  </div>
+
+</div>
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   PORTRAIT MODE  —  1232×1433 content (Kindle native portrait, no rotation)
+   2×3 grid: 5 nav cards (6th empty)
+   Card size approx 606 × 400px
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% elif mode == 'portrait' %}
+<div style="height:1433px; display:flex; flex-direction:column; overflow:hidden;">
+
+  <div style="flex-shrink:0; border-bottom:2px solid #000; padding-bottom:12px; margin-bottom:16px;">
+    <h1 style="font-size:40px; letter-spacing:0.03em; line-height:1;">Kindle Dashboard</h1>
+    <div style="font-size:16px; color:#666; margin-top:4px;">Milan, Italy</div>
+  </div>
+
+  {{ mode_toggle() }}
+
+  <div style="
+    flex:1; min-height:0;
     display:grid;
     grid-template-columns:1fr 1fr;
-    grid-template-rows:1fr 1fr;
-    gap:32px;
-    min-height:0;
+    grid-template-rows:1fr 1fr 1fr;
+    gap:20px;
   ">
+    {{ nav_card(weather_url, 'Weather', 'Milan · Current &amp; Forecast', icon_weather) }}
+    {{ nav_card(docker_url,  'Docker',  'Container Resources',            icon_docker) }}
+    {{ nav_card(ups_url,     'UPS',     'Power &amp; Battery Monitor',    icon_ups) }}
+    {{ nav_card(esp32_url,   'ESP32',   'Temp · Humidity · Pressure',     icon_esp32) }}
+    {{ nav_card(sys_url,     'System',  'CPU · Memory · Processes',       icon_sys) }}
+    {# 6th cell empty #}
+  </div>
 
-    {# ── Weather ──────────────────────────────────────────────────────────────── #}
-    <a href="{{ weather_url }}" style="
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:18px;
-      border:2px solid #000; border-radius:4px;
-      text-decoration:none; color:#000;
-    ">
-      {# Sun + cloud icon #}
-      <svg width="90" height="74" viewBox="0 0 110 90" style="display:block;">
-        <circle cx="42" cy="32" r="13" fill="none" stroke="#000" stroke-width="3"/>
-        <line x1="42" y1="4"  x2="42" y2="13" stroke="#000" stroke-width="3"/>
-        <line x1="42" y1="51" x2="42" y2="60" stroke="#000" stroke-width="3"/>
-        <line x1="14" y1="32" x2="23" y2="32" stroke="#000" stroke-width="3"/>
-        <line x1="61" y1="32" x2="70" y2="32" stroke="#000" stroke-width="3"/>
-        <line x1="23" y1="13" x2="29" y2="19" stroke="#000" stroke-width="3"/>
-        <line x1="55" y1="45" x2="61" y2="51" stroke="#000" stroke-width="3"/>
-        <line x1="61" y1="13" x2="55" y2="19" stroke="#000" stroke-width="3"/>
-        <line x1="23" y1="51" x2="29" y2="45" stroke="#000" stroke-width="3"/>
-        <path d="M38 75 Q28 75 28 65 Q28 58 34 56 Q33 42 46 40 Q56 38 60 48 Q66 46 70 52 Q76 52 76 60 Q76 68 68 70 Z"
-              fill="#fff" stroke="#000" stroke-width="3"/>
-      </svg>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   WEB MODE  —  responsive, any device (laptop / phone / tablet)
+   Auto-fill grid, scrollable, standard font sizes
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% else %}
+<style>
+  /* Web-only overrides — clean, minimal, readable on any screen */
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .web-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 0;
+  }
+  .web-card {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px; min-height: 200px;
+    border: 2px solid #000; border-radius: 6px;
+    text-decoration: none; color: #000;
+    padding: 20px 16px;
+    transition: none;
+  }
+  .web-header {
+    max-width: 900px;
+    margin: 0 auto 20px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid #000;
+  }
+  .web-grid-wrap { max-width: 900px; margin: 0 auto; }
+</style>
+
+<div class="web-header">
+  <h1 style="font-size:32px; letter-spacing:0.02em; margin-bottom:4px;">Kindle Dashboard</h1>
+  <div style="font-size:14px; color:#666; margin-bottom:14px;">Milan, Italy</div>
+  {{ mode_toggle() }}
+</div>
+
+<div class="web-grid-wrap">
+  <div class="web-grid">
+    <a href="{{ weather_url }}?mode=web" class="web-card">
+      {{ icon_weather | safe }}
       <div style="text-align:center;">
-        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">Weather</div>
-        <div style="font-size:17px; color:#666; margin-top:5px;">Milan · Current &amp; Forecast</div>
+        <div style="font-size:22px; font-weight:bold;">Weather</div>
+        <div style="font-size:13px; color:#666; margin-top:3px;">Milan · Current &amp; Forecast</div>
       </div>
     </a>
-
-    {# ── Docker ───────────────────────────────────────────────────────────────── #}
-    <a href="{{ docker_url }}" style="
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:18px;
-      border:2px solid #000; border-radius:4px;
-      text-decoration:none; color:#000;
-    ">
-      {# Stacked boxes (container) icon #}
-      <svg width="90" height="74" viewBox="0 0 100 90" style="display:block;">
-        <rect x="10" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-        <rect x="38" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-        <rect x="66" y="52" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-        <rect x="24" y="28" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-        <rect x="52" y="28" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-        <rect x="38"  y="6" width="24" height="20" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-      </svg>
+    <a href="{{ docker_url }}?mode=web" class="web-card">
+      {{ icon_docker | safe }}
       <div style="text-align:center;">
-        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">Docker</div>
-        <div style="font-size:17px; color:#666; margin-top:5px;">Container Resources</div>
+        <div style="font-size:22px; font-weight:bold;">Docker</div>
+        <div style="font-size:13px; color:#666; margin-top:3px;">Container Resources</div>
       </div>
     </a>
-
-    {# ── UPS ──────────────────────────────────────────────────────────────────── #}
-    <a href="{{ ups_url }}" style="
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:18px;
-      border:2px solid #000; border-radius:4px;
-      text-decoration:none; color:#000;
-    ">
-      {# Lightning bolt / battery icon #}
-      <svg width="90" height="74" viewBox="0 0 90 74" style="display:block;">
-        {# Battery body #}
-        <rect x="6" y="16" width="68" height="42" rx="4" fill="none" stroke="#000" stroke-width="3"/>
-        <rect x="74" y="26" width="10" height="22" rx="2" fill="none" stroke="#000" stroke-width="2.5"/>
-        {# Charge fill #}
-        <rect x="10" y="20" width="48" height="34" rx="2" fill="#000"/>
-        {# Lightning bolt overlay on fill #}
-        <polyline points="40,23 33,39 42,39 35,55"
-                  fill="none" stroke="#fff" stroke-width="3.5"
-                  stroke-linejoin="round" stroke-linecap="round"/>
-      </svg>
+    <a href="{{ ups_url }}?mode=web" class="web-card">
+      {{ icon_ups | safe }}
       <div style="text-align:center;">
-        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">UPS</div>
-        <div style="font-size:17px; color:#666; margin-top:5px;">Power &amp; Battery Monitor</div>
+        <div style="font-size:22px; font-weight:bold;">UPS</div>
+        <div style="font-size:13px; color:#666; margin-top:3px;">Power &amp; Battery Monitor</div>
       </div>
     </a>
-
-    {# ── ESP32 ────────────────────────────────────────────────────────────────── #}
-    <a href="{{ esp32_url }}" style="
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:18px;
-      border:2px solid #000; border-radius:4px;
-      text-decoration:none; color:#000;
-    ">
-      {# Chip / microcontroller icon #}
-      <svg width="90" height="74" viewBox="0 0 90 74" style="display:block;">
-        {# IC body #}
-        <rect x="22" y="12" width="46" height="50" rx="3" fill="none" stroke="#000" stroke-width="3"/>
-        {# Pins left #}
-        <line x1="6"  y1="22" x2="22" y2="22" stroke="#000" stroke-width="2.5"/>
-        <line x1="6"  y1="32" x2="22" y2="32" stroke="#000" stroke-width="2.5"/>
-        <line x1="6"  y1="42" x2="22" y2="42" stroke="#000" stroke-width="2.5"/>
-        <line x1="6"  y1="52" x2="22" y2="52" stroke="#000" stroke-width="2.5"/>
-        {# Pins right #}
-        <line x1="68" y1="22" x2="84" y2="22" stroke="#000" stroke-width="2.5"/>
-        <line x1="68" y1="32" x2="84" y2="32" stroke="#000" stroke-width="2.5"/>
-        <line x1="68" y1="42" x2="84" y2="42" stroke="#000" stroke-width="2.5"/>
-        <line x1="68" y1="52" x2="84" y2="52" stroke="#000" stroke-width="2.5"/>
-        {# Notch on top-left #}
-        <path d="M22 20 Q28 12 34 20" fill="none" stroke="#000" stroke-width="2"/>
-        {# Inner cross (circuit detail) #}
-        <rect x="30" y="26" width="30" height="22" rx="2" fill="none" stroke="#000" stroke-width="2"/>
-      </svg>
+    <a href="{{ esp32_url }}?mode=web" class="web-card">
+      {{ icon_esp32 | safe }}
       <div style="text-align:center;">
-        <div style="font-size:38px; font-weight:bold; letter-spacing:0.03em;">ESP32</div>
-        <div style="font-size:17px; color:#666; margin-top:5px;">Temp · Humidity · Pressure</div>
+        <div style="font-size:22px; font-weight:bold;">ESP32</div>
+        <div style="font-size:13px; color:#666; margin-top:3px;">Temp · Humidity · Pressure</div>
       </div>
     </a>
-
+    <a href="{{ sys_url }}?mode=web" class="web-card">
+      {{ icon_sys | safe }}
+      <div style="text-align:center;">
+        <div style="font-size:22px; font-weight:bold;">System</div>
+        <div style="font-size:13px; color:#666; margin-top:3px;">CPU · Memory · Processes</div>
+      </div>
+    </a>
   </div>
 </div>
+{% endif %}
+
 {% endblock %}
