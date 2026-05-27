@@ -3,6 +3,8 @@
 A FastAPI web application for a Kindle Oasis 3 (10th gen) e-ink display.
 Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px viewport exactly.
 
+I use a custom app-specific physical button remapper too, see this repo: [Kindle Button Handler](https://github.com/sumdher/kindle_button_handler)
+
 ## Screenshots
 
 ### Dashboard
@@ -16,6 +18,9 @@ Pages are server-rendered, grayscale-safe, and designed to fill the Oasis 3's px
 
 ### UPS monitor 
 ![weather](.media/UPS_dashboard.jpeg)
+
+### System
+![sys](.media/sys_dashboard.jpeg)
 
 ## Requirements
 
